@@ -1,0 +1,480 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Core organizational structure
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  address     String?
+  phone       String?
+  email       String?
+  website     String?
+  logoUrl     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  entities Entity[]
+  users    User[]
+
+  @@map("organizations")
+}
+
+model Entity {
+  id             String  @id @default(cuid())
+  name           String
+  legalName      String?
+  entityType     String? // LLC, Corporation, Partnership, Individual
+  taxId          String?
+  address        String?
+  phone          String?
+  email          String?
+  organizationId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  properties     Property[]
+  bankLedgers    BankLedger[]
+  chartAccounts  ChartOfAccount[]
+  userEntities   UserEntity[]
+
+  @@map("entities")
+}
+
+// Property management structure
+model Property {
+  id          String  @id @default(cuid())
+  name        String
+  address     String
+  city        String
+  state       String
+  zipCode     String
+  propertyType String? // Residential, Commercial, Mixed
+  totalUnits  Int     @default(0)
+  yearBuilt   Int?
+  squareFeet  Int?
+  description String?
+  entityId    String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  entity            Entity             @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  spaces            Space[]
+  maintenanceReqs   MaintenanceRequest[]
+  propertyExpenses  PropertyExpense[]
+  userProperties    UserProperty[]
+
+  @@map("properties")
+}
+
+model Space {
+  id           String  @id @default(cuid())
+  unitNumber   String
+  floor        Int?
+  spaceType    String? // Apartment, Office, Retail, Storage
+  bedrooms     Int?
+  bathrooms    Decimal?
+  squareFeet   Int?
+  description  String?
+  propertyId   String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  property         Property           @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  leases           Lease[]
+  maintenanceReqs  MaintenanceRequest[]
+
+  @@unique([propertyId, unitNumber])
+  @@map("spaces")
+}
+
+// User management and roles
+enum UserRole {
+  SUPER_ADMIN     // Full system access
+  ORG_ADMIN       // Organization level access
+  ENTITY_MANAGER  // Entity level access
+  PROPERTY_MANAGER // Property level access
+  TENANT          // Tenant access only
+  MAINTENANCE     // Maintenance staff
+  ACCOUNTANT      // Financial access
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  PENDING
+  SUSPENDED
+}
+
+model User {
+  id            String     @id @default(cuid())
+  email         String     @unique
+  passwordHash  String
+  firstName     String
+  lastName      String
+  phone         String?
+  role          UserRole   @default(TENANT)
+  status        UserStatus @default(PENDING)
+  organizationId String
+
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relationships
+  organization     Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userEntities     UserEntity[]
+  userProperties   UserProperty[]
+  leases           Lease[]
+  maintenanceReqs  MaintenanceRequest[]
+  ledgerEntries    LedgerEntry[]
+
+  @@map("users")
+}
+
+// Junction tables for user access control
+model UserEntity {
+  id       String @id @default(cuid())
+  userId   String
+  entityId String
+
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entity Entity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, entityId])
+  @@map("user_entities")
+}
+
+model UserProperty {
+  id         String @id @default(cuid())
+  userId     String
+  propertyId String
+
+  createdAt DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, propertyId])
+  @@map("user_properties")
+}
+
+// Lease management
+enum LeaseStatus {
+  DRAFT
+  ACTIVE
+  EXPIRED
+  TERMINATED
+  RENEWED
+}
+
+model Lease {
+  id               String      @id @default(cuid())
+  spaceId          String
+  tenantId         String
+  startDate        DateTime
+  endDate          DateTime
+  monthlyRent      Decimal     @db.Decimal(10, 2)
+  securityDeposit  Decimal     @db.Decimal(10, 2)
+  status           LeaseStatus @default(DRAFT)
+  leaseTerms       String?     // JSON or text for additional terms
+  
+  // NNN and additional charges
+  nnnExpenses      Decimal?    @db.Decimal(10, 2)
+  utilitiesIncluded Boolean    @default(false)
+  petDeposit       Decimal?    @db.Decimal(10, 2)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  space           Space            @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  tenant          User             @relation(fields: [tenantId], references: [id])
+  invoices        Invoice[]
+  rentPayments    RentPayment[]
+  rentIncreases   RentIncrease[]
+  leaseRenewals   LeaseRenewal[]
+
+  @@map("leases")
+}
+
+model LeaseRenewal {
+  id              String   @id @default(cuid())
+  leaseId         String
+  newEndDate      DateTime
+  newMonthlyRent  Decimal  @db.Decimal(10, 2)
+  renewedAt       DateTime @default(now())
+  notes           String?
+
+  lease Lease @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+
+  @@map("lease_renewals")
+}
+
+model RentIncrease {
+  id             String   @id @default(cuid())
+  leaseId        String
+  previousRent   Decimal  @db.Decimal(10, 2)
+  newRent        Decimal  @db.Decimal(10, 2)
+  increaseAmount Decimal  @db.Decimal(10, 2)
+  increasePercent Decimal @db.Decimal(5, 2)
+  effectiveDate  DateTime
+  reason         String?
+  createdAt      DateTime @default(now())
+
+  lease Lease @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+
+  @@map("rent_increases")
+}
+
+// Financial management
+model ChartOfAccount {
+  id          String @id @default(cuid())
+  entityId    String
+  accountCode String
+  accountName String
+  accountType String // Asset, Liability, Equity, Revenue, Expense
+  description String?
+  isActive    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  entity        Entity        @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  ledgerEntries LedgerEntry[]
+
+  @@unique([entityId, accountCode])
+  @@map("chart_of_accounts")
+}
+
+model BankLedger {
+  id            String  @id @default(cuid())
+  entityId      String
+  accountName   String
+  accountNumber String?
+  bankName      String?
+  accountType   String  // Checking, Savings, Money Market
+  currentBalance Decimal @db.Decimal(15, 2) @default(0)
+  isActive      Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  entity        Entity        @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  ledgerEntries LedgerEntry[]
+
+  @@map("bank_ledgers")
+}
+
+enum TransactionType {
+  DEBIT
+  CREDIT
+}
+
+model LedgerEntry {
+  id              String          @id @default(cuid())
+  bankLedgerId    String
+  chartAccountId  String
+  transactionType TransactionType
+  amount          Decimal         @db.Decimal(15, 2)
+  description     String
+  referenceNumber String?
+  transactionDate DateTime
+  reconciled      Boolean         @default(false)
+  reconciledAt    DateTime?
+  createdById     String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bankLedger   BankLedger     @relation(fields: [bankLedgerId], references: [id])
+  chartAccount ChartOfAccount @relation(fields: [chartAccountId], references: [id])
+  createdBy    User           @relation(fields: [createdById], references: [id])
+
+  @@map("ledger_entries")
+}
+
+// Invoice and payment management
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum InvoiceType {
+  RENT
+  UTILITIES
+  NNN
+  LATE_FEE
+  MAINTENANCE
+  OTHER
+}
+
+model Invoice {
+  id          String        @id @default(cuid())
+  leaseId     String
+  invoiceNumber String      @unique
+  invoiceType InvoiceType
+  amount      Decimal       @db.Decimal(10, 2)
+  dueDate     DateTime
+  status      InvoiceStatus @default(DRAFT)
+  description String?
+  notes       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lease    Lease     @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+  payments Payment[]
+
+  @@map("invoices")
+}
+
+enum PaymentMethod {
+  CASH
+  CHECK
+  CREDIT_CARD
+  BANK_TRANSFER
+  ONLINE
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+model Payment {
+  id            String        @id @default(cuid())
+  invoiceId     String
+  amount        Decimal       @db.Decimal(10, 2)
+  paymentDate   DateTime
+  paymentMethod PaymentMethod
+  status        PaymentStatus @default(PENDING)
+  referenceNumber String?
+  notes         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}
+
+model RentPayment {
+  id            String        @id @default(cuid())
+  leaseId       String
+  amount        Decimal       @db.Decimal(10, 2)
+  paymentDate   DateTime
+  periodStart   DateTime      // Rent period start
+  periodEnd     DateTime      // Rent period end
+  paymentMethod PaymentMethod
+  status        PaymentStatus @default(COMPLETED)
+  referenceNumber String?
+  lateFee       Decimal?      @db.Decimal(10, 2)
+  notes         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lease Lease @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+
+  @@map("rent_payments")
+}
+
+// Maintenance management
+enum MaintenanceStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum MaintenancePriority {
+  LOW
+  MEDIUM
+  HIGH
+  EMERGENCY
+}
+
+model MaintenanceRequest {
+  id          String              @id @default(cuid())
+  propertyId  String
+  spaceId     String?
+  tenantId    String
+  title       String
+  description String
+  priority    MaintenancePriority @default(MEDIUM)
+  status      MaintenanceStatus   @default(OPEN)
+  
+  estimatedCost Decimal? @db.Decimal(10, 2)
+  actualCost    Decimal? @db.Decimal(10, 2)
+  
+  requestedAt  DateTime @default(now())
+  completedAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  space    Space?   @relation(fields: [spaceId], references: [id])
+  tenant   User     @relation(fields: [tenantId], references: [id])
+
+  @@map("maintenance_requests")
+}
+
+// Property expenses for NNN calculations
+enum ExpenseType {
+  MAINTENANCE
+  UTILITIES
+  INSURANCE
+  TAXES
+  MANAGEMENT
+  REPAIRS
+  LANDSCAPING
+  CLEANING
+  OTHER
+}
+
+model PropertyExpense {
+  id          String      @id @default(cuid())
+  propertyId  String
+  expenseType ExpenseType
+  amount      Decimal     @db.Decimal(10, 2)
+  description String
+  expenseDate DateTime
+  vendor      String?
+  invoiceNumber String?
+  
+  // For NNN allocation
+  allocateToTenants Boolean @default(false)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@map("property_expenses")
+}
