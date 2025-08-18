@@ -294,6 +294,105 @@ async function main() {
 
     console.log('✅ Created rent increase record');
 
+    // Create some invoices for the leases
+    const invoice1 = await prisma.invoice.create({
+        data: {
+            leaseId: lease.id,
+            invoiceNumber: 'INV-2024-001',
+            invoiceType: 'RENT',
+            amount: 1500.00,
+            dueDate: new Date(),
+            status: 'SENT',
+            description: 'Monthly rent for January 2024',
+            notes: 'Payment due by the 1st of the month',
+        },
+    });
+
+    const invoice2 = await prisma.invoice.create({
+        data: {
+            leaseId: lease2.id,
+            invoiceNumber: 'INV-2024-002',
+            invoiceType: 'RENT',
+            amount: 1600.00,
+            dueDate: new Date(),
+            status: 'SENT',
+            description: 'Monthly rent for January 2024',
+            notes: 'Payment due by the 1st of the month',
+        },
+    });
+
+    console.log('✅ Created 2 demo invoices');
+
+    // Create a payment for the first invoice
+    const payment1 = await prisma.payment.create({
+        data: {
+            invoiceId: invoice1.id,
+            amount: 1500.00,
+            paymentDate: new Date(),
+            paymentMethod: 'ONLINE',
+            status: 'COMPLETED',
+            referenceNumber: 'PAY-2024-001',
+            notes: 'Online payment via tenant portal',
+        },
+    });
+
+    // Update the invoice status to PAID
+    await prisma.invoice.update({
+        where: { id: invoice1.id },
+        data: { status: 'PAID' },
+    });
+
+    console.log('✅ Created payment and marked invoice as paid');
+
+    // Create some ledger entries
+    const cashAccount = await prisma.chartOfAccount.findFirst({
+        where: { entityId: entity.id, accountCode: '1000' },
+    });
+
+    const rentalIncomeAccount = await prisma.chartOfAccount.findFirst({
+        where: { entityId: entity.id, accountCode: '4000' },
+    });
+
+    if (cashAccount && rentalIncomeAccount && bankLedger) {
+        // Record the rent payment as a ledger entry
+        const ledgerEntry1 = await prisma.ledgerEntry.create({
+            data: {
+                bankLedgerId: bankLedger.id,
+                chartAccountId: rentalIncomeAccount.id,
+                transactionType: 'CREDIT',
+                amount: 1500.00,
+                description: 'Rent payment from John Tenant - Unit A1',
+                referenceNumber: 'PAY-2024-001',
+                transactionDate: new Date(),
+                reconciled: false,
+                createdById: superAdmin.id,
+            },
+        });
+
+        // Record a maintenance expense
+        const maintenanceAccount = await prisma.chartOfAccount.findFirst({
+            where: { entityId: entity.id, accountCode: '5000' },
+        });
+
+        if (maintenanceAccount) {
+            const ledgerEntry2 = await prisma.ledgerEntry.create({
+                data: {
+                    bankLedgerId: bankLedger.id,
+                    chartAccountId: maintenanceAccount.id,
+                    transactionType: 'DEBIT',
+                    amount: 250.00,
+                    description: 'HVAC repair for Unit A2',
+                    referenceNumber: 'MAINT-001',
+                    transactionDate: new Date(),
+                    reconciled: false,
+                    createdById: superAdmin.id,
+                },
+            });
+        }
+
+        console.log('✅ Created ledger entries for income and expenses');
+    }
+
     // Create chart of accounts for the entity
     const chartAccounts = [
         { accountCode: '1000', accountName: 'Cash - Operating', accountType: 'Asset' },

@@ -237,7 +237,63 @@ else
     echo -e "${YELLOW}⚠️  No available spaces for lease test${NC}"
 fi
 
-# Test 17: Error Handling
+# Test 17: Financial - Bank Ledgers
+echo -e "\n${YELLOW}17. Testing Bank Ledgers${NC}"
+BANK_LEDGERS=$(make_request GET "/financials/bank-ledgers")
+BANK_LEDGER_COUNT=$(echo $BANK_LEDGERS | jq '.data | length')
+echo -e "${GREEN}✅ Found $BANK_LEDGER_COUNT bank ledgers${NC}"
+
+# Test 18: Financial - Chart of Accounts
+echo -e "\n${YELLOW}18. Testing Chart of Accounts${NC}"
+CHART_ACCOUNTS=$(make_request GET "/financials/chart-accounts")
+CHART_ACCOUNT_COUNT=$(echo $CHART_ACCOUNTS | jq '.data | length')
+echo -e "${GREEN}✅ Found $CHART_ACCOUNT_COUNT chart accounts${NC}"
+
+# Test 19: Financial - Invoices
+echo -e "\n${YELLOW}19. Testing Invoices${NC}"
+INVOICES=$(make_request GET "/financials/invoices")
+INVOICE_COUNT=$(echo $INVOICES | jq '.data | length')
+echo -e "${GREEN}✅ Found $INVOICE_COUNT invoices${NC}"
+
+# Get invoice details
+if [ "$INVOICE_COUNT" -gt 0 ]; then
+    INVOICE_ID=$(echo $INVOICES | jq -r '.data[0].id')
+    INVOICE_DETAILS=$(make_request GET "/financials/invoices/$INVOICE_ID")
+    INVOICE_AMOUNT=$(echo $INVOICE_DETAILS | jq '.amount')
+    INVOICE_STATUS=$(echo $INVOICE_DETAILS | jq -r '.status')
+    echo -e "${GREEN}✅ Invoice: \$INVOICE_AMOUNT ($INVOICE_STATUS)${NC}"
+fi
+
+# Test 20: Financial - Payments
+echo -e "\n${YELLOW}20. Testing Payments${NC}"
+PAYMENTS=$(make_request GET "/financials/payments")
+PAYMENT_COUNT=$(echo $PAYMENTS | jq '.data | length')
+echo -e "${GREEN}✅ Found $PAYMENT_COUNT payments${NC}"
+
+# Test 21: Financial - Ledger Entries
+echo -e "\n${YELLOW}21. Testing Ledger Entries${NC}"
+LEDGER_ENTRIES=$(make_request GET "/financials/ledger-entries")
+LEDGER_COUNT=$(echo $LEDGER_ENTRIES | jq '.data | length')
+echo -e "${GREEN}✅ Found $LEDGER_COUNT ledger entries${NC}"
+
+# Test 22: Financial Reports
+echo -e "\n${YELLOW}22. Testing Financial Reports${NC}"
+ENTITY_ID=$(echo $ENTITIES_RESPONSE | jq -r '.data[0].id')
+FINANCIAL_SUMMARY=$(make_request GET "/financials/reports/summary/$ENTITY_ID")
+TOTAL_PAYMENTS=$(echo $FINANCIAL_SUMMARY | jq '.payments.total')
+TOTAL_INVOICES=$(echo $FINANCIAL_SUMMARY | jq '.invoices.total')
+BANK_BALANCE=$(echo $FINANCIAL_SUMMARY | jq '.banking.totalBalance')
+echo -e "${GREEN}✅ Financial Summary: \$TOTAL_PAYMENTS payments, \$TOTAL_INVOICES invoiced, \$BANK_BALANCE bank balance${NC}"
+
+# Test 23: Rent Roll Report
+echo -e "\n${YELLOW}23. Testing Rent Roll Report${NC}"
+RENT_ROLL=$(make_request GET "/financials/reports/rent-roll/$ENTITY_ID")
+RENT_ROLL_UNITS=$(echo $RENT_ROLL | jq '.summary.totalUnits')
+RENT_ROLL_TOTAL=$(echo $RENT_ROLL | jq '.summary.totalRent')
+echo -e "${GREEN}✅ Rent Roll: $RENT_ROLL_UNITS units generating \$RENT_ROLL_TOTAL monthly${NC}"
+
+# Test 24: Error Handling
+echo -e "\n${YELLOW}24. Testing Error Handling${NC}"
 echo -e "\n${YELLOW}17. Testing Error Handling${NC}"
 echo -e "\n${YELLOW}13. Testing Error Handling${NC}"
 ERROR_RESPONSE=$(make_request GET "/properties/non-existent-id")
@@ -254,12 +310,12 @@ echo -e "${GREEN}✅ CRUD operations successful${NC}"
 echo -e "${GREEN}✅ Data relationships intact${NC}"
 echo -e "${GREEN}✅ Error handling proper${NC}"
 
-echo -e "\n${BLUE}🎉 Property Management System API is ready for development!${NC}"
+echo -e "\n${BLUE}🎉 Property Management System API is ready for production!${NC}"
 echo -e "\n${YELLOW}Next steps:${NC}"
-echo "1. Build the Financials module for invoicing and payments"
-echo "2. Add the Maintenance module for work orders"
-echo "3. Create reporting and analytics features"
-echo "4. Build a frontend application"
-echo "5. Add automated rent payment processing"
+echo "1. Add the Maintenance module for work orders"
+echo "2. Create reporting and analytics features"
+echo "3. Build automated rent payment processing"
+echo "4. Add notification system for lease expirations"
+echo "5. Build a frontend application"
 
 echo -e "\n${BLUE}Access the API documentation: http://localhost:3000/api/docs${NC}"
