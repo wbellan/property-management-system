@@ -206,6 +206,94 @@ async function main() {
 
     console.log('✅ Created lease for unit A1');
 
+    // Create some rent payments for the lease
+    const rentPayments = [];
+    for (let i = 0; i < 3; i++) {
+        const paymentDate = new Date();
+        paymentDate.setMonth(paymentDate.getMonth() - i);
+
+        const periodStart = new Date(paymentDate);
+        periodStart.setDate(1); // First day of month
+
+        const periodEnd = new Date(periodStart);
+        periodEnd.setMonth(periodEnd.getMonth() + 1);
+        periodEnd.setDate(0); // Last day of month
+
+        const rentPayment = await prisma.rentPayment.create({
+            data: {
+                leaseId: lease.id,
+                amount: 1500.00,
+                paymentDate,
+                periodStart,
+                periodEnd,
+                paymentMethod: 'ONLINE',
+                status: 'COMPLETED',
+                referenceNumber: `PAY-${Date.now()}-${i}`,
+                notes: `Monthly rent payment for ${periodStart.toLocaleDateString()}`,
+            },
+        });
+        rentPayments.push(rentPayment);
+    }
+
+    console.log('✅ Created 3 rent payment records');
+
+    // Create a second tenant and lease for demo
+    const tenant2 = await prisma.user.upsert({
+        where: { email: 'tenant2@example.com' },
+        update: {},
+        create: {
+            email: 'tenant2@example.com',
+            passwordHash: hashedPassword,
+            firstName: 'Jane',
+            lastName: 'Smith',
+            phone: '+1-555-0301',
+            role: 'TENANT',
+            status: 'ACTIVE',
+            organizationId: organization.id,
+        },
+    });
+
+    // Create second lease for unit A2
+    const startDate2 = new Date();
+    startDate2.setMonth(startDate2.getMonth() - 6); // Started 6 months ago
+    const endDate2 = new Date();
+    endDate2.setFullYear(endDate2.getFullYear() + 1);
+
+    const lease2 = await prisma.lease.upsert({
+        where: { id: 'demo-lease-2-id' },
+        update: {},
+        create: {
+            id: 'demo-lease-2-id',
+            spaceId: spaces[1].id, // Unit A2
+            tenantId: tenant2.id,
+            startDate: startDate2,
+            endDate: endDate2,
+            monthlyRent: 1600.00,
+            securityDeposit: 1600.00,
+            status: 'ACTIVE',
+            leaseTerms: 'Standard 18-month residential lease agreement',
+            nnnExpenses: 175.00,
+            utilitiesIncluded: true,
+        },
+    });
+
+    console.log('✅ Created second lease for unit A2');
+
+    // Create a rent increase for the second lease
+    const rentIncrease = await prisma.rentIncrease.create({
+        data: {
+            leaseId: lease2.id,
+            previousRent: 1550.00,
+            newRent: 1600.00,
+            increaseAmount: 50.00,
+            increasePercent: 3.23,
+            effectiveDate: new Date(),
+            reason: 'Annual rent increase per lease agreement',
+        },
+    });
+
+    console.log('✅ Created rent increase record');
+
     // Create chart of accounts for the entity
     const chartAccounts = [
         { accountCode: '1000', accountName: 'Cash - Operating', accountType: 'Asset' },
