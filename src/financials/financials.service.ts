@@ -1,7 +1,7 @@
 // src/financials/financials.service.ts
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { UserRole, InvoiceStatus, PaymentStatus } from '@prisma/client';
-
+import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateBankLedgerDto } from './dto/create-bank-ledger.dto';
 import { UpdateBankLedgerDto } from './dto/update-bank-ledger.dto';
@@ -920,11 +920,11 @@ export class FinancialsService {
 
     // Calculate total payments already made
     const totalPaid = invoice.payments.reduce((sum, payment) => {
-      return payment.status === 'COMPLETED' ? sum + payment.amount : sum;
+      return payment.status === 'COMPLETED' ? sum + Number(payment.amount) : sum;
     }, 0);
 
     // Check if payment amount would exceed invoice amount
-    if (totalPaid + createPaymentDto.amount > invoice.amount) {
+    if (totalPaid + createPaymentDto.amount > Number(invoice.amount)) {
       throw new BadRequestException('Payment amount exceeds remaining invoice balance');
     }
 
@@ -968,8 +968,9 @@ export class FinancialsService {
       });
 
       // Update invoice status if fully paid
+      // Update invoice status if fully paid
       const newTotalPaid = totalPaid + createPaymentDto.amount;
-      if (newTotalPaid >= invoice.amount && createPaymentDto.status === 'COMPLETED') {
+      if (newTotalPaid >= Number(invoice.amount) && createPaymentDto.status === 'COMPLETED') {
         await tx.invoice.update({
           where: { id: createPaymentDto.invoiceId },
           data: { status: 'PAID' },
@@ -1234,9 +1235,9 @@ export class FinancialsService {
 
     const summary = {
       totalUnits: rentRoll.length,
-      totalRent: rentRoll.reduce((sum, lease) => sum + lease.monthlyRent, 0),
+      totalRent: rentRoll.reduce((sum, lease) => sum + Number(lease.monthlyRent), 0),
       totalOutstanding: rentRoll.reduce((sum, lease) => {
-        const outstanding = lease.invoices.reduce((invoiceSum, invoice) => invoiceSum + invoice.amount, 0);
+        const outstanding = lease.invoices.reduce((invoiceSum, invoice) => invoiceSum + Number(invoice.amount), 0);
         return sum + outstanding;
       }, 0),
     };
@@ -1364,7 +1365,7 @@ export class FinancialsService {
             leaseId: lease.id,
             invoiceNumber,
             invoiceType: 'RENT',
-            amount: lease.monthlyRent + (lease.nnnExpenses || 0),
+            amount: Number(lease.monthlyRent) + Number(lease.nnnExpenses || 0),
             dueDate,
             status: 'DRAFT',
             description: `Monthly rent for ${lease.space.property.name} - Unit ${lease.space.unitNumber}`,

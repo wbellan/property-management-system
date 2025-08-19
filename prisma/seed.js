@@ -114,6 +114,24 @@ async function main() {
 
     console.log('✅ Created entity manager:', entityManager.email);
 
+    // Create maintenance user
+    const maintenanceUser = await prisma.user.upsert({
+        where: { email: 'maintenance@demoproperties.com' },
+        update: {},
+        create: {
+            email: 'maintenance@demoproperties.com',
+            passwordHash: hashedPassword,
+            firstName: 'Mike',
+            lastName: 'Maintenance',
+            phone: '+1-555-0202',
+            role: 'MAINTENANCE',
+            status: 'ACTIVE',
+            organizationId: organization.id,
+        },
+    });
+
+    console.log('✅ Created maintenance user:', maintenanceUser.email);
+
     // Create demo property
     const property = await prisma.property.upsert({
         where: { id: 'demo-property-id' },
@@ -219,23 +237,31 @@ async function main() {
         periodEnd.setMonth(periodEnd.getMonth() + 1);
         periodEnd.setDate(0); // Last day of month
 
-        const rentPayment = await prisma.rentPayment.create({
-            data: {
-                leaseId: lease.id,
-                amount: 1500.00,
-                paymentDate,
-                periodStart,
-                periodEnd,
-                paymentMethod: 'ONLINE',
-                status: 'COMPLETED',
-                referenceNumber: `PAY-${Date.now()}-${i}`,
-                notes: `Monthly rent payment for ${periodStart.toLocaleDateString()}`,
-            },
+        const refNumber = `PAY-${Date.now()}-${i}`;
+
+        const existingPayment = await prisma.rentPayment.findFirst({
+            where: { referenceNumber: refNumber }
         });
-        rentPayments.push(rentPayment);
+
+        if (!existingPayment) {
+            const rentPayment = await prisma.rentPayment.create({
+                data: {
+                    leaseId: lease.id,
+                    amount: 1500.00,
+                    paymentDate,
+                    periodStart,
+                    periodEnd,
+                    paymentMethod: 'ONLINE',
+                    status: 'COMPLETED',
+                    referenceNumber: refNumber,
+                    notes: `Monthly rent payment for ${periodStart.toLocaleDateString()}`,
+                },
+            });
+            rentPayments.push(rentPayment);
+        }
     }
 
-    console.log('✅ Created 3 rent payment records');
+    console.log('✅ Created rent payment records');
 
     // Create a second tenant and lease for demo
     const tenant2 = await prisma.user.upsert({
@@ -279,121 +305,27 @@ async function main() {
 
     console.log('✅ Created second lease for unit A2');
 
-    // Create a rent increase for the second lease
-    const rentIncrease = await prisma.rentIncrease.create({
-        data: {
-            leaseId: lease2.id,
-            previousRent: 1550.00,
-            newRent: 1600.00,
-            increaseAmount: 50.00,
-            increasePercent: 3.23,
-            effectiveDate: new Date(),
-            reason: 'Annual rent increase per lease agreement',
-        },
+    // Check if rent increase already exists
+    const existingRentIncrease = await prisma.rentIncrease.findFirst({
+        where: { leaseId: lease2.id }
     });
 
-    console.log('✅ Created rent increase record');
-
-    // Create some invoices for the leases
-    const invoice1 = await prisma.invoice.create({
-        data: {
-            leaseId: lease.id,
-            invoiceNumber: 'INV-2024-001',
-            invoiceType: 'RENT',
-            amount: 1500.00,
-            dueDate: new Date(),
-            status: 'SENT',
-            description: 'Monthly rent for January 2024',
-            notes: 'Payment due by the 1st of the month',
-        },
-    });
-
-    const invoice2 = await prisma.invoice.create({
-        data: {
-            leaseId: lease2.id,
-            invoiceNumber: 'INV-2024-002',
-            invoiceType: 'RENT',
-            amount: 1600.00,
-            dueDate: new Date(),
-            status: 'SENT',
-            description: 'Monthly rent for January 2024',
-            notes: 'Payment due by the 1st of the month',
-        },
-    });
-
-    console.log('✅ Created 2 demo invoices');
-
-    // Create a payment for the first invoice
-    const payment1 = await prisma.payment.create({
-        data: {
-            invoiceId: invoice1.id,
-            amount: 1500.00,
-            paymentDate: new Date(),
-            paymentMethod: 'ONLINE',
-            status: 'COMPLETED',
-            referenceNumber: 'PAY-2024-001',
-            notes: 'Online payment via tenant portal',
-        },
-    });
-
-    // Update the invoice status to PAID
-    await prisma.invoice.update({
-        where: { id: invoice1.id },
-        data: { status: 'PAID' },
-    });
-
-    console.log('✅ Created payment and marked invoice as paid');
-
-    // Create some ledger entries
-    const cashAccount = await prisma.chartOfAccount.findFirst({
-        where: { entityId: entity.id, accountCode: '1000' },
-    });
-
-    const rentalIncomeAccount = await prisma.chartOfAccount.findFirst({
-        where: { entityId: entity.id, accountCode: '4000' },
-    });
-
-    if (cashAccount && rentalIncomeAccount && bankLedger) {
-        // Record the rent payment as a ledger entry
-        const ledgerEntry1 = await prisma.ledgerEntry.create({
+    if (!existingRentIncrease) {
+        const rentIncrease = await prisma.rentIncrease.create({
             data: {
-                bankLedgerId: bankLedger.id,
-                chartAccountId: rentalIncomeAccount.id,
-                transactionType: 'CREDIT',
-                amount: 1500.00,
-                description: 'Rent payment from John Tenant - Unit A1',
-                referenceNumber: 'PAY-2024-001',
-                transactionDate: new Date(),
-                reconciled: false,
-                createdById: superAdmin.id,
+                leaseId: lease2.id,
+                previousRent: 1550.00,
+                newRent: 1600.00,
+                increaseAmount: 50.00,
+                increasePercent: 3.23,
+                effectiveDate: new Date(),
+                reason: 'Annual rent increase per lease agreement',
             },
         });
-
-        // Record a maintenance expense
-        const maintenanceAccount = await prisma.chartOfAccount.findFirst({
-            where: { entityId: entity.id, accountCode: '5000' },
-        });
-
-        if (maintenanceAccount) {
-            const ledgerEntry2 = await prisma.ledgerEntry.create({
-                data: {
-                    bankLedgerId: bankLedger.id,
-                    chartAccountId: maintenanceAccount.id,
-                    transactionType: 'DEBIT',
-                    amount: 250.00,
-                    description: 'HVAC repair for Unit A2',
-                    referenceNumber: 'MAINT-001',
-                    transactionDate: new Date(),
-                    reconciled: false,
-                    createdById: superAdmin.id,
-                },
-            });
-        }
-
-        console.log('✅ Created ledger entries for income and expenses');
+        console.log('✅ Created rent increase record');
     }
 
-    // Create chart of accounts for the entity
+    // Create chart of accounts for the entity first
     const chartAccounts = [
         { accountCode: '1000', accountName: 'Cash - Operating', accountType: 'Asset' },
         { accountCode: '1100', accountName: 'Accounts Receivable', accountType: 'Asset' },
@@ -445,12 +377,322 @@ async function main() {
 
     console.log('✅ Created bank ledger');
 
+    // Create some invoices for the leases
+    const invoice1 = await prisma.invoice.upsert({
+        where: { invoiceNumber: 'INV-2024-001' },
+        update: {},
+        create: {
+            leaseId: lease.id,
+            invoiceNumber: 'INV-2024-001',
+            invoiceType: 'RENT',
+            amount: 1500.00,
+            dueDate: new Date(),
+            status: 'SENT',
+            description: 'Monthly rent for January 2024',
+            notes: 'Payment due by the 1st of the month',
+        },
+    });
+
+    const invoice2 = await prisma.invoice.upsert({
+        where: { invoiceNumber: 'INV-2024-002' },
+        update: {},
+        create: {
+            leaseId: lease2.id,
+            invoiceNumber: 'INV-2024-002',
+            invoiceType: 'RENT',
+            amount: 1600.00,
+            dueDate: new Date(),
+            status: 'SENT',
+            description: 'Monthly rent for January 2024',
+            notes: 'Payment due by the 1st of the month',
+        },
+    });
+
+    console.log('✅ Created 2 demo invoices');
+
+    // Create a payment for the first invoice
+    const existingPayment = await prisma.payment.findFirst({
+        where: { referenceNumber: 'PAY-2024-001' }
+    });
+
+    if (!existingPayment) {
+        const payment1 = await prisma.payment.create({
+            data: {
+                invoiceId: invoice1.id,
+                amount: 1500.00,
+                paymentDate: new Date(),
+                paymentMethod: 'ONLINE',
+                status: 'COMPLETED',
+                referenceNumber: 'PAY-2024-001',
+                notes: 'Online payment via tenant portal',
+            },
+        });
+
+        // Update the invoice status to PAID
+        await prisma.invoice.update({
+            where: { id: invoice1.id },
+            data: { status: 'PAID' },
+        });
+
+        console.log('✅ Created payment and marked invoice as paid');
+    }
+
+    // Create ledger entries
+    const cashAccount = await prisma.chartOfAccount.findFirst({
+        where: { entityId: entity.id, accountCode: '1000' },
+    });
+
+    const rentalIncomeAccount = await prisma.chartOfAccount.findFirst({
+        where: { entityId: entity.id, accountCode: '4000' },
+    });
+
+    const maintenanceAccount = await prisma.chartOfAccount.findFirst({
+        where: { entityId: entity.id, accountCode: '5000' },
+    });
+
+    if (cashAccount && rentalIncomeAccount && bankLedger) {
+        // Check if ledger entry already exists
+        const existingLedgerEntry = await prisma.ledgerEntry.findFirst({
+            where: { referenceNumber: 'PAY-2024-001' }
+        });
+
+        if (!existingLedgerEntry) {
+            const ledgerEntry1 = await prisma.ledgerEntry.create({
+                data: {
+                    bankLedgerId: bankLedger.id,
+                    chartAccountId: rentalIncomeAccount.id,
+                    transactionType: 'CREDIT',
+                    amount: 1500.00,
+                    description: 'Rent payment from John Tenant - Unit A1',
+                    referenceNumber: 'PAY-2024-001',
+                    transactionDate: new Date(),
+                    reconciled: false,
+                    createdById: superAdmin.id,
+                },
+            });
+        }
+
+        if (maintenanceAccount) {
+            const existingMaintenanceEntry = await prisma.ledgerEntry.findFirst({
+                where: { referenceNumber: 'MAINT-001' }
+            });
+
+            if (!existingMaintenanceEntry) {
+                const ledgerEntry2 = await prisma.ledgerEntry.create({
+                    data: {
+                        bankLedgerId: bankLedger.id,
+                        chartAccountId: maintenanceAccount.id,
+                        transactionType: 'DEBIT',
+                        amount: 250.00,
+                        description: 'HVAC repair for Unit A2',
+                        referenceNumber: 'MAINT-001',
+                        transactionDate: new Date(),
+                        reconciled: false,
+                        createdById: superAdmin.id,
+                    },
+                });
+            }
+        }
+
+        console.log('✅ Created ledger entries for income and expenses');
+    }
+
+    // Create demo vendors
+    const hvacVendor = await prisma.vendor.upsert({
+        where: { id: 'demo-hvac-vendor-id' },
+        update: {},
+        create: {
+            id: 'demo-hvac-vendor-id',
+            name: 'ABC HVAC Services',
+            description: 'Professional heating, ventilation, and air conditioning services',
+            vendorType: 'HVAC',
+            contactName: 'Mike Johnson',
+            phone: '+1-555-0400',
+            email: 'mike@abchvac.com',
+            address: '789 Service Street, Demo City, DC 12345',
+            licenseNumber: 'HVAC-12345',
+            isInsured: true,
+            isActive: true,
+            entityId: entity.id,
+        },
+    });
+
+    const plumbingVendor = await prisma.vendor.upsert({
+        where: { id: 'demo-plumbing-vendor-id' },
+        update: {},
+        create: {
+            id: 'demo-plumbing-vendor-id',
+            name: 'Quick Fix Plumbing',
+            description: 'Emergency and routine plumbing services',
+            vendorType: 'Plumbing',
+            contactName: 'Sarah Wilson',
+            phone: '+1-555-0401',
+            email: 'sarah@quickfixplumbing.com',
+            address: '456 Repair Ave, Demo City, DC 12345',
+            licenseNumber: 'PLB-67890',
+            isInsured: true,
+            isActive: true,
+            entityId: entity.id,
+        },
+    });
+
+    const electricalVendor = await prisma.vendor.upsert({
+        where: { id: 'demo-electrical-vendor-id' },
+        update: {},
+        create: {
+            id: 'demo-electrical-vendor-id',
+            name: 'Bright Spark Electric',
+            description: 'Licensed electrical contractors for residential and commercial',
+            vendorType: 'Electrical',
+            contactName: 'Tom Rodriguez',
+            phone: '+1-555-0402',
+            email: 'tom@brightspark.com',
+            address: '321 Electric Ave, Demo City, DC 12345',
+            licenseNumber: 'ELE-54321',
+            isInsured: true,
+            isActive: true,
+            entityId: entity.id,
+        },
+    });
+
+    console.log('✅ Created 3 demo vendors');
+
+    // Create demo maintenance requests
+    const maintenanceRequest1 = await prisma.maintenanceRequest.upsert({
+        where: { id: 'demo-maintenance-1-id' },
+        update: {},
+        create: {
+            id: 'demo-maintenance-1-id',
+            propertyId: property.id,
+            spaceId: spaces[0].id, // Unit A1
+            tenantId: tenant.id,
+            title: 'Air conditioning not cooling properly',
+            description: 'The AC unit in the living room is not cooling effectively. Temperature stays around 78 degrees even when set to 72.',
+            priority: 'HIGH',
+            status: 'OPEN',
+            estimatedCost: 150.00,
+        },
+    });
+
+    const maintenanceRequest2 = await prisma.maintenanceRequest.upsert({
+        where: { id: 'demo-maintenance-2-id' },
+        update: {},
+        create: {
+            id: 'demo-maintenance-2-id',
+            propertyId: property.id,
+            spaceId: spaces[1].id, // Unit A2
+            tenantId: tenant2.id,
+            title: 'Kitchen faucet leaking',
+            description: 'The kitchen faucet has been dripping constantly for the past week. Appears to be coming from the base.',
+            priority: 'MEDIUM',
+            status: 'IN_PROGRESS',
+            estimatedCost: 75.00,
+        },
+    });
+
+    const maintenanceRequest3 = await prisma.maintenanceRequest.upsert({
+        where: { id: 'demo-maintenance-3-id' },
+        update: {},
+        create: {
+            id: 'demo-maintenance-3-id',
+            propertyId: property.id,
+            spaceId: spaces[2].id, // Unit A3
+            tenantId: tenant.id, // Same tenant for demo
+            title: 'Toilet running continuously',
+            description: 'Toilet in the main bathroom runs continuously and won\'t stop filling.',
+            priority: 'LOW',
+            status: 'COMPLETED',
+            estimatedCost: 50.00,
+            actualCost: 45.00,
+            completedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), // 2 days ago
+        },
+    });
+
+    const maintenanceRequest4 = await prisma.maintenanceRequest.upsert({
+        where: { id: 'demo-maintenance-4-id' },
+        update: {},
+        create: {
+            id: 'demo-maintenance-4-id',
+            propertyId: property.id,
+            spaceId: spaces[3].id, // Unit A4
+            tenantId: tenant2.id,
+            title: 'Electrical outlet not working in bedroom',
+            description: 'The outlet near the bed stopped working yesterday. No power to any devices plugged in.',
+            priority: 'EMERGENCY',
+            status: 'OPEN',
+            estimatedCost: 100.00,
+        },
+    });
+
+    console.log('✅ Created 4 demo maintenance requests');
+
+    // Create maintenance assignments
+    const assignment1 = await prisma.maintenanceAssignment.upsert({
+        where: { id: 'demo-assignment-1-id' },
+        update: {},
+        create: {
+            id: 'demo-assignment-1-id',
+            maintenanceReqId: maintenanceRequest1.id,
+            vendorId: hvacVendor.id,
+            scheduledDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // Tomorrow
+            notes: 'Assigned to HVAC specialist for AC diagnosis and repair',
+        },
+    });
+
+    const assignment2 = await prisma.maintenanceAssignment.upsert({
+        where: { id: 'demo-assignment-2-id' },
+        update: {},
+        create: {
+            id: 'demo-assignment-2-id',
+            maintenanceReqId: maintenanceRequest2.id,
+            vendorId: plumbingVendor.id,
+            scheduledDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000), // Day after tomorrow
+            notes: 'Plumber scheduled to repair kitchen faucet leak',
+        },
+    });
+
+    const assignment3 = await prisma.maintenanceAssignment.upsert({
+        where: { id: 'demo-assignment-3-id' },
+        update: {},
+        create: {
+            id: 'demo-assignment-3-id',
+            maintenanceReqId: maintenanceRequest3.id,
+            vendorId: plumbingVendor.id,
+            completedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), // 2 days ago
+            cost: 45.00,
+            notes: 'Replaced toilet flapper valve. Issue resolved.',
+        },
+    });
+
+    const assignment4 = await prisma.maintenanceAssignment.upsert({
+        where: { id: 'demo-assignment-4-id' },
+        update: {},
+        create: {
+            id: 'demo-assignment-4-id',
+            maintenanceReqId: maintenanceRequest4.id,
+            vendorId: electricalVendor.id,
+            scheduledDate: new Date(Date.now() + 4 * 60 * 60 * 1000), // 4 hours from now (emergency)
+            notes: 'Emergency electrical repair - priority assignment',
+        },
+    });
+
+    console.log('✅ Created 4 maintenance assignments');
+
     console.log('🎉 Database seeded successfully!');
     console.log('\n📋 Demo Accounts Created:');
     console.log('Super Admin: admin@demoproperties.com / admin123');
     console.log('Org Admin: orgadmin@demoproperties.com / admin123');
     console.log('Entity Manager: manager@sunsetproperties.com / admin123');
-    console.log('Tenant: tenant@example.com / admin123');
+    console.log('Maintenance User: maintenance@demoproperties.com / admin123');
+    console.log('Tenant 1: tenant@example.com / admin123');
+    console.log('Tenant 2: tenant2@example.com / admin123');
+    console.log('\n📊 Demo Data Created:');
+    console.log('- 1 Organization with 1 Entity');
+    console.log('- 1 Property with 4 Units');
+    console.log('- 2 Active Leases');
+    console.log('- 3 Vendors (HVAC, Plumbing, Electrical)');
+    console.log('- 4 Maintenance Requests with Assignments');
+    console.log('- Financial records (invoices, payments, ledger entries)');
 }
 
 main()

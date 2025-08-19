@@ -631,12 +631,13 @@ export class LeasesService {
             throw new BadRequestException('Effective date cannot be in the past');
         }
 
-        if (rentIncreaseDto.newRent <= lease.monthlyRent) {
+        if (rentIncreaseDto.newRent <= Number(lease.monthlyRent)) {
             throw new BadRequestException('New rent must be higher than current rent');
         }
 
-        const increaseAmount = rentIncreaseDto.newRent - lease.monthlyRent;
-        const increasePercent = (increaseAmount / lease.monthlyRent) * 100;
+        const increaseAmount = rentIncreaseDto.newRent - Number(lease.monthlyRent);
+        const increasePercent = (increaseAmount / Number(lease.monthlyRent)) * 100;
+
 
         // Use transaction to update lease and create rent increase record
         const result = await this.prisma.$transaction(async (tx) => {

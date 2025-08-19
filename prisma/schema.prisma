@@ -50,6 +50,7 @@ model Entity {
   bankLedgers    BankLedger[]
   chartAccounts  ChartOfAccount[]
   userEntities   UserEntity[]
+  vendors        Vendor[]
 
   @@map("entities")
 }
@@ -441,8 +442,52 @@ model MaintenanceRequest {
   property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   space    Space?   @relation(fields: [spaceId], references: [id])
   tenant   User     @relation(fields: [tenantId], references: [id])
+  
+  // New relationship for vendor assignments
+  assignments MaintenanceAssignment[]
 
   @@map("maintenance_requests")
+}
+
+model Vendor {
+  id              String      @id @default(cuid())
+  name            String
+  description     String?
+  vendorType      String      // HVAC, Plumbing, etc.
+  contactName     String?
+  phone           String?
+  email           String?
+  address         String?
+  licenseNumber   String?
+  isInsured       Boolean     @default(false)
+  isActive        Boolean     @default(true)
+  entityId        String
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  // Relationships
+  entity                Entity               @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  maintenanceAssignments MaintenanceAssignment[]
+
+  @@map("vendors")
+}
+
+model MaintenanceAssignment {
+  id                String      @id @default(cuid())
+  maintenanceReqId  String
+  vendorId          String
+  assignedAt        DateTime    @default(now())
+  scheduledDate     DateTime?
+  completedAt       DateTime?
+  notes             String?
+  cost              Decimal?    @db.Decimal(10, 2)
+
+  // Relationships
+  maintenanceRequest MaintenanceRequest @relation(fields: [maintenanceReqId], references: [id], onDelete: Cascade)
+  vendor            Vendor              @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@map("maintenance_assignments")
 }
 
 // Property expenses for NNN calculations

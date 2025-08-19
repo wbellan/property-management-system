@@ -292,7 +292,39 @@ RENT_ROLL_UNITS=$(echo $RENT_ROLL | jq '.summary.totalUnits')
 RENT_ROLL_TOTAL=$(echo $RENT_ROLL | jq '.summary.totalRent')
 echo -e "${GREEN}✅ Rent Roll: $RENT_ROLL_UNITS units generating \$RENT_ROLL_TOTAL monthly${NC}"
 
-# Test 24: Error Handling
+# Test 24: Maintenance - Requests
+echo -e "\n${YELLOW}24. Testing Maintenance Requests${NC}"
+MAINTENANCE_REQUESTS=$(make_request GET "/maintenance/requests")
+MAINTENANCE_COUNT=$(echo $MAINTENANCE_REQUESTS | jq '.data | length')
+echo -e "${GREEN}✅ Found $MAINTENANCE_COUNT maintenance requests${NC}"
+
+# Get maintenance request details
+if [ "$MAINTENANCE_COUNT" -gt 0 ]; then
+    MAINTENANCE_ID=$(echo $MAINTENANCE_REQUESTS | jq -r '.data[0].id')
+    MAINTENANCE_DETAILS=$(make_request GET "/maintenance/requests/$MAINTENANCE_ID")
+    MAINTENANCE_TITLE=$(echo $MAINTENANCE_DETAILS | jq -r '.title')
+    MAINTENANCE_PRIORITY=$(echo $MAINTENANCE_DETAILS | jq -r '.priority')
+    MAINTENANCE_STATUS=$(echo $MAINTENANCE_DETAILS | jq -r '.status')
+    echo -e "${GREEN}✅ Request: \"$MAINTENANCE_TITLE\" ($MAINTENANCE_PRIORITY priority, $MAINTENANCE_STATUS)${NC}"
+fi
+
+# Test 25: Maintenance - Vendors
+echo -e "\n${YELLOW}25. Testing Maintenance Vendors${NC}"
+VENDORS=$(make_request GET "/maintenance/vendors")
+VENDOR_COUNT=$(echo $VENDORS | jq '.data | length')
+echo -e "${GREEN}✅ Found $VENDOR_COUNT vendors${NC}"
+
+# Test 26: Maintenance Reports
+echo -e "\n${YELLOW}26. Testing Maintenance Reports${NC}"
+ENTITY_ID=$(echo $ENTITIES_RESPONSE | jq -r '.data[0].id')
+MAINTENANCE_STATS=$(make_request GET "/maintenance/reports/stats/$ENTITY_ID")
+TOTAL_REQUESTS=$(echo $MAINTENANCE_STATS | jq '.summary.totalRequests')
+OPEN_REQUESTS=$(echo $MAINTENANCE_STATS | jq '.summary.openRequests')
+COMPLETED_REQUESTS=$(echo $MAINTENANCE_STATS | jq '.summary.completedRequests')
+echo -e "${GREEN}✅ Maintenance Summary: $TOTAL_REQUESTS total, $OPEN_REQUESTS open, $COMPLETED_REQUESTS completed${NC}"
+
+# Test 27: Error Handling
+echo -e "\n${YELLOW}27. Testing Error Handling${NC}"
 echo -e "\n${YELLOW}24. Testing Error Handling${NC}"
 echo -e "\n${YELLOW}17. Testing Error Handling${NC}"
 echo -e "\n${YELLOW}13. Testing Error Handling${NC}"
