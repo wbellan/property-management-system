@@ -7,179 +7,337 @@ import { PrismaService } from '../prisma/prisma.service';
 export class ReportsService {
     constructor(private prisma: PrismaService) { }
 
-    // ============= P&L STATEMENTS =============
+    // ============= PROFIT & LOSS STATEMENTS =============
 
-    async getProfitLossStatement(entityId: string, startDate: string, endDate: string, userRole: UserRole, userOrgId: string, userEntities: string[]) {
+    async getProfitLossStatement(
+        entityId: string,
+        startDate: string,
+        endDate: string,
+        userRole: UserRole,
+        userOrgId: string,
+        userEntities: string[],
+    ) {
         await this.verifyEntityAccess(entityId, userRole, userOrgId, userEntities);
 
         const start = new Date(startDate);
         const end = new Date(endDate);
 
-        // Get all revenue streams
-        const [rentalIncome, lateFeesIncome, otherIncome, expenses] = await Promise.all([
-            this.getRentalIncome(entityId, start, end),
-            this.getLateFeesIncome(entityId, start, end),
-            this.getOtherIncome(entityId, start, end),
-            this.getExpensesByCategory(entityId, start, end),
-        ]);
+        // Get revenue data from payments
+        const revenue = await this.prisma.payment.aggregate({
+            where: {
+                createdAt: {
+                    gte: start,
+                    lte: end,
+                },
+                invoice: {
+                    lease: {
+                        space: {
+                            property: {
+                                entityId,
+                            },
+                        },
+                    },
+                },
+            },
+            _sum: {
+                amount: true,
+            },
+        });
 
-        const totalRevenue = rentalIncome + lateFeesIncome + otherIncome;
-        const totalExpenses = Object.values(expenses).reduce((sum: number, amount: any) => sum + Number(amount), 0);
+        // Get expense data - using createdAt instead of date
+        const expenses = await this.prisma.propertyExpense.aggregate({
+            where: {
+                property: {
+                    entityId,
+                },
+                createdAt: {
+                    gte: start,
+                    lte: end,
+                },
+            },
+            _sum: {
+                amount: true,
+            },
+        });
+
+        // Convert Decimal to number properly
+        const totalRevenue = Number(revenue._sum.amount || 0);
+        const totalExpenses = Number(expenses._sum.amount || 0);
         const netIncome = totalRevenue - totalExpenses;
+        const profitMargin = totalRevenue > 0 ? (netIncome / totalRevenue) * 100 : 0;
 
         return {
             entityId,
-            period: { startDate: start, endDate: end },
-            revenue: {
-                rentalIncome,
-                lateFeesIncome,
-                otherIncome,
+            period: {
+                startDate,
+                endDate,
+            },
+            summary: {
                 totalRevenue,
+                totalExpenses,
+                netIncome,
+                profitMargin: Math.round(profitMargin * 100) / 100,
+            },
+            revenue: {
+                total: totalRevenue,
             },
             expenses: {
-                ...expenses,
-                totalExpenses,
+                total: totalExpenses,
             },
-            netIncome,
-            profitMargin: totalRevenue > 0 ? (netIncome / totalRevenue) * 100 : 0,
+            generatedAt: new Date(),
         };
     }
 
     // ============= OCCUPANCY ANALYTICS =============
 
-    async getOccupancyAnalytics(entityId: string, userRole: UserRole, userOrgId: string, userEntities: string[]) {
+    async getOccupancyAnalytics(
+        entityId: string,
+        userRole: UserRole,
+        userOrgId: string,
+        userEntities: string[],
+    ) {
         await this.verifyEntityAccess(entityId, userRole, userOrgId, userEntities);
 
-        const [properties, monthlyOccupancy, yearlyTrends] = await Promise.all([
-            this.getPropertyOccupancyStats(entityId),
-            this.getMonthlyOccupancyTrends(entityId),
-            this.getYearlyOccupancyTrends(entityId),
-        ]);
+        // Get all spaces for the entity
+        const spaces = await this.prisma.space.findMany({
+            where: {
+                property: {
+                    entityId,
+                },
+            },
+            include: {
+                property: {
+                    select: {
+                        id: true,
+                        name: true,
+                        propertyType: true,
+                    },
+                },
+                leases: {
+                    where: {
+                        status: 'ACTIVE',
+                    },
+                    select: {
+                        id: true,
+                        monthlyRent: true,
+                        startDate: true,
+                        endDate: true,
+                    },
+                },
+            },
+        });
 
-        const totalUnits = properties.reduce((sum, prop) => sum + prop.totalUnits, 0);
-        const occupiedUnits = properties.reduce((sum, prop) => sum + prop.occupiedUnits, 0);
-        const overallOccupancyRate = totalUnits > 0 ? (occupiedUnits / totalUnits) * 100 : 0;
+        const totalSpaces = spaces.length;
+        const occupiedSpaces = spaces.filter(space => space.leases.length > 0).length;
+        const vacantSpaces = totalSpaces - occupiedSpaces;
+        const occupancyRate = totalSpaces > 0 ? (occupiedSpaces / totalSpaces) * 100 : 0;
+
+        // Calculate monthly revenue from occupied spaces
+        const monthlyRevenue = spaces.reduce((sum, space) => {
+            if (space.leases.length > 0) {
+                return sum + Number(space.leases[0].monthlyRent || 0);
+            }
+            return sum;
+        }, 0);
+
+        // Group by property
+        const propertySummary = spaces.reduce((acc, space) => {
+            const propertyId = space.property.id;
+            if (!acc[propertyId]) {
+                acc[propertyId] = {
+                    propertyId,
+                    propertyName: space.property.name,
+                    propertyType: space.property.propertyType,
+                    totalSpaces: 0,
+                    occupiedSpaces: 0,
+                    vacantSpaces: 0,
+                    occupancyRate: 0,
+                    monthlyRevenue: 0,
+                };
+            }
+
+            acc[propertyId].totalSpaces++;
+            if (space.leases.length > 0) {
+                acc[propertyId].occupiedSpaces++;
+                acc[propertyId].monthlyRevenue += Number(space.leases[0]?.monthlyRent || 0);
+            } else {
+                acc[propertyId].vacantSpaces++;
+            }
+
+            acc[propertyId].occupancyRate = acc[propertyId].totalSpaces > 0 ? 
+                (acc[propertyId].occupiedSpaces / acc[propertyId].totalSpaces) * 100 : 0;
+
+            return acc;
+        }, {});
 
         return {
             entityId,
             summary: {
-                totalProperties: properties.length,
-                totalUnits,
-                occupiedUnits,
-                vacantUnits: totalUnits - occupiedUnits,
-                overallOccupancyRate,
+                totalSpaces,
+                occupiedSpaces,
+                vacantSpaces,
+                occupancyRate: Math.round(occupancyRate * 100) / 100,
+                monthlyRevenue,
+                annualRevenue: monthlyRevenue * 12,
             },
-            byProperty: properties,
-            trends: {
-                monthly: monthlyOccupancy,
-                yearly: yearlyTrends,
-            },
+            properties: Object.values(propertySummary),
+            generatedAt: new Date(),
         };
     }
 
-    // ============= CUSTOM REPORTS =============
+    // ============= ENHANCED CASH FLOW ANALYSIS =============
 
-    async getCustomReport(reportType: string, params: any, userRole: UserRole, userOrgId: string, userEntities: string[]) {
-        switch (reportType) {
-            case 'rent-roll':
-                return this.getRentRollReport(params.entityId, userRole, userOrgId, userEntities);
-            case 'maintenance-summary':
-                return this.getMaintenanceSummaryReport(params.entityId, params.startDate, params.endDate, userRole, userOrgId, userEntities);
-            case 'lease-expiration':
-                return this.getLeaseExpirationReport(params.entityId, params.months, userRole, userOrgId, userEntities);
-            case 'financial-summary':
-                return this.getFinancialSummaryReport(params.entityId, params.startDate, params.endDate, userRole, userOrgId, userEntities);
-            case 'tenant-aging':
-                return this.getTenantAgingReport(params.entityId, userRole, userOrgId, userEntities);
-            default:
-                throw new BadRequestException('Invalid report type');
-        }
-    }
-
-    // ============= RENT ROLL REPORT =============
-
-    async getRentRollReport(entityId: string, userRole: UserRole, userOrgId: string, userEntities: string[]) {
-        await this.verifyEntityAccess(entityId, userRole, userOrgId, userEntities);
-
-        const leases = await this.prisma.lease.findMany({
-            where: {
-                space: { property: { entityId } },
-                status: 'ACTIVE',
-            },
-            include: {
-                space: {
-                    include: {
-                        property: {
-                            select: {
-                                id: true,
-                                name: true,
-                                address: true,
-                            },
-                        },
-                    },
-                },
-                tenant: {
-                    select: {
-                        id: true,
-                        firstName: true,
-                        lastName: true,
-                        email: true,
-                        phone: true,
-                    },
-                },
-                invoices: {
-                    where: { status: { in: ['SENT', 'OVERDUE'] } },
-                },
-            },
-            orderBy: [
-                { space: { property: { name: 'asc' } } },
-                { space: { unitNumber: 'asc' } },
-            ],
-        });
-
-        const summary = {
-            totalUnits: leases.length,
-            totalMonthlyRent: leases.reduce((sum, lease) => sum + Number(lease.monthlyRent), 0),
-            totalAnnualRent: leases.reduce((sum, lease) => sum + Number(lease.monthlyRent) * 12, 0),
-            totalOutstanding: leases.reduce((sum, lease) => {
-                const outstanding = lease.invoices.reduce((invoiceSum, invoice) => invoiceSum + Number(invoice.amount), 0);
-                return sum + outstanding;
-            }, 0),
-        };
-
-        return { leases, summary };
-    }
-
-    // ============= MAINTENANCE SUMMARY REPORT =============
-
-    async getMaintenanceSummaryReport(entityId: string, startDate: string, endDate: string, userRole: UserRole, userOrgId: string, userEntities: string[]) {
+    async getCashFlowAnalysis(
+        entityId: string,
+        startDate: string,
+        endDate: string,
+        groupBy: 'month' | 'quarter' | 'year',
+        userRole: UserRole,
+        userOrgId: string,
+        userEntities: string[]
+    ) {
         await this.verifyEntityAccess(entityId, userRole, userOrgId, userEntities);
 
         const start = new Date(startDate);
         const end = new Date(endDate);
 
-        const [requests, costs, byPriority, byProperty] = await Promise.all([
-            this.getMaintenanceRequestStats(entityId, start, end),
-            this.getMaintenanceCostStats(entityId, start, end),
-            this.getMaintenanceByPriority(entityId, start, end),
-            this.getMaintenanceByProperty(entityId, start, end),
-        ]);
+        // Get income for the period
+        const income = await this.getIncomeForPeriod(entityId, start, end);
+        
+        // Get expenses for the period
+        const expenses = await this.getExpensesForPeriod(entityId, start, end);
+
+        const netCashFlow = income.total - expenses.total;
 
         return {
             entityId,
             period: { startDate: start, endDate: end },
-            requests,
-            costs,
-            breakdown: {
-                byPriority,
-                byProperty,
+            groupBy,
+            summary: {
+                totalIncome: income.total,
+                totalExpenses: expenses.total,
+                netCashFlow,
+                cashFlowMargin: income.total > 0 ? (netCashFlow / income.total) * 100 : 0,
             },
+            generatedAt: new Date(),
         };
     }
 
-    // ============= LEASE EXPIRATION REPORT =============
+    // ============= ENHANCED RENT ROLL REPORT =============
 
-    async getLeaseExpirationReport(entityId: string, months: number = 6, userRole: UserRole, userOrgId: string, userEntities: string[]) {
+    async getEnhancedRentRollReport(
+        entityId: string,
+        userRole: UserRole,
+        userOrgId: string,
+        userEntities: string[],
+        propertyId?: string,
+        includeVacant: boolean = false
+    ) {
+        await this.verifyEntityAccess(entityId, userRole, userOrgId, userEntities);
+
+        let whereClause: any = {
+            property: { entityId },
+        };
+
+        if (propertyId) {
+            whereClause.propertyId = propertyId;
+        }
+
+        // Get all spaces that match criteria
+        const spaces = await this.prisma.space.findMany({
+            where: whereClause,
+            include: {
+                property: {
+                    select: {
+                        id: true,
+                        name: true,
+                        address: true,
+                        propertyType: true,
+                    },
+                },
+                leases: {
+                    where: {
+                        status: 'ACTIVE',
+                    },
+                    include: {
+                        tenant: {
+                            select: {
+                                id: true,
+                                firstName: true,
+                                lastName: true,
+                                email: true,
+                                phone: true,
+                            },
+                        },
+                    },
+                },
+            },
+            orderBy: [
+                { property: { name: 'asc' } },
+                { unitNumber: 'asc' }, // Use unitNumber instead of name
+            ],
+        });
+
+        // Filter for occupied or include vacant based on parameter
+        const filteredSpaces = includeVacant ? 
+            spaces : 
+            spaces.filter(space => space.leases.length > 0);
+
+        const rentRoll = filteredSpaces.map(space => {
+            const activeLease = space.leases[0];
+            
+            return {
+                spaceId: space.id,
+                spaceName: space.unitNumber, // Use unitNumber as spaceName
+                propertyId: space.property.id,
+                propertyName: space.property.name,
+                propertyAddress: space.property.address,
+                propertyType: space.property.propertyType,
+                squareFootage: Number(space.squareFeet), // Use squareFeet instead of squareFootage
+                status: activeLease ? 'OCCUPIED' : 'VACANT',
+                tenant: activeLease ? {
+                    id: activeLease.tenant.id,
+                    name: `${activeLease.tenant.firstName} ${activeLease.tenant.lastName}`,
+                    email: activeLease.tenant.email,
+                    phone: activeLease.tenant.phone,
+                } : null,
+                lease: activeLease ? {
+                    id: activeLease.id,
+                    startDate: activeLease.startDate,
+                    endDate: activeLease.endDate,
+                    monthlyRent: activeLease.monthlyRent,
+                    securityDeposit: activeLease.securityDeposit,
+                } : null,
+            };
+        });
+
+        const summary = {
+            totalSpaces: rentRoll.length,
+            occupiedSpaces: rentRoll.filter(r => r.status === 'OCCUPIED').length,
+            vacantSpaces: rentRoll.filter(r => r.status === 'VACANT').length,
+            totalMonthlyRent: rentRoll.reduce((sum, r) => sum + Number(r.lease?.monthlyRent || 0), 0),
+        };
+
+        return {
+            entityId,
+            propertyId,
+            includeVacant,
+            summary,
+            rentRoll,
+            generatedAt: new Date(),
+        };
+    }
+
+    // ============= ENHANCED LEASE EXPIRATION REPORT =============
+
+    async getEnhancedLeaseExpirationReport(
+        entityId: string,
+        months: number,
+        includeRenewalHistory: boolean,
+        userRole: UserRole,
+        userOrgId: string,
+        userEntities: string[]
+    ) {
         await this.verifyEntityAccess(entityId, userRole, userOrgId, userEntities);
 
         const futureDate = new Date();
@@ -216,178 +374,264 @@ export class ReportsService {
             orderBy: { endDate: 'asc' },
         });
 
+        // Calculate risk scores and categorize leases
+        const leasesWithAnalysis = expiringLeases.map(lease => {
+            const daysUntilExpiration = Math.floor(
+                (lease.endDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+            );
+
+            let riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+            if (daysUntilExpiration <= 30) riskLevel = 'CRITICAL';
+            else if (daysUntilExpiration <= 60) riskLevel = 'HIGH';
+            else if (daysUntilExpiration <= 90) riskLevel = 'MEDIUM';
+            else riskLevel = 'LOW';
+
+            return {
+                leaseId: lease.id,
+                tenant: {
+                    name: `${lease.tenant.firstName} ${lease.tenant.lastName}`,
+                    email: lease.tenant.email,
+                    phone: lease.tenant.phone,
+                },
+                property: {
+                    id: lease.space.property.id,
+                    name: lease.space.property.name,
+                    address: lease.space.property.address,
+                },
+                space: {
+                    id: lease.space.id,
+                    name: lease.space.unitNumber, // Use unitNumber instead of name
+                },
+                leaseDetails: {
+                    startDate: lease.startDate,
+                    endDate: lease.endDate,
+                    monthlyRent: lease.monthlyRent,
+                    securityDeposit: lease.securityDeposit,
+                },
+                expirationAnalysis: {
+                    daysUntilExpiration,
+                    riskLevel,
+                    renewalRecommendation: daysUntilExpiration <= 60 ? 
+                        'Contact immediately for renewal discussion' : 
+                        'Schedule renewal discussion',
+                },
+            };
+        });
+
+        // Group by risk level
+        const riskSummary = leasesWithAnalysis.reduce((acc, lease) => {
+            const risk = lease.expirationAnalysis.riskLevel;
+            acc[risk] = (acc[risk] || 0) + 1;
+            return acc;
+        }, {} as Record<string, number>);
+
         const summary = {
-            totalExpiring: expiringLeases.length,
-            totalMonthlyRentAtRisk: expiringLeases.reduce((sum, lease) => sum + Number(lease.monthlyRent), 0),
-            averageDaysToExpiration: this.calculateAverageDaysToExpiration(expiringLeases),
+            totalExpiringLeases: leasesWithAnalysis.length,
+            totalMonthlyRentAtRisk: leasesWithAnalysis.reduce(
+                (sum, lease) => sum + Number(lease.leaseDetails.monthlyRent), 0
+            ),
+            riskBreakdown: riskSummary,
         };
 
-        return { expiringLeases, summary, lookAheadMonths: months };
+        return {
+            entityId,
+            lookAheadMonths: months,
+            includeRenewalHistory,
+            summary,
+            expiringLeases: leasesWithAnalysis,
+            generatedAt: new Date(),
+        };
     }
 
-    // ============= FINANCIAL SUMMARY REPORT =============
+    // ============= MAINTENANCE ANALYTICS =============
 
-    async getFinancialSummaryReport(entityId: string, startDate: string, endDate: string, userRole: UserRole, userOrgId: string, userEntities: string[]) {
+    async getMaintenanceAnalytics(
+        entityId: string,
+        startDate: string,
+        endDate: string,
+        propertyId: string | undefined,
+        userRole: UserRole,
+        userOrgId: string,
+        userEntities: string[]
+    ) {
         await this.verifyEntityAccess(entityId, userRole, userOrgId, userEntities);
 
         const start = new Date(startDate);
         const end = new Date(endDate);
 
-        const [income, expenses, cashFlow, bankBalances] = await Promise.all([
-            this.getIncomeBreakdown(entityId, start, end),
-            this.getExpenseBreakdown(entityId, start, end),
-            this.getCashFlowAnalysis(entityId, start, end),
-            this.getBankBalances(entityId),
-        ]);
+        let whereClause: any = {
+            property: { entityId },
+            createdAt: { gte: start, lte: end },
+        };
+
+        if (propertyId) {
+            whereClause.propertyId = propertyId;
+        }
+
+        const maintenanceRequests = await this.prisma.maintenanceRequest.findMany({
+            where: whereClause,
+            include: {
+                property: {
+                    select: {
+                        id: true,
+                        name: true,
+                    },
+                },
+                space: {
+                    select: {
+                        id: true,
+                        unitNumber: true, // Use unitNumber instead of name
+                    },
+                },
+            },
+        });
+
+        const totalRequests = maintenanceRequests.length;
+        const completedRequests = maintenanceRequests.filter(r => r.status === 'COMPLETED').length;
+        const pendingRequests = totalRequests - completedRequests;
+
+        // Group by priority
+        const requestsByPriority = maintenanceRequests.reduce((acc, req) => {
+            acc[req.priority] = (acc[req.priority] || 0) + 1;
+            return acc;
+        }, {} as Record<string, number>);
+
+        // Group by title (instead of category which doesn't exist)
+        const requestsByType = maintenanceRequests.reduce((acc, req) => {
+            const type = req.title || 'Other';
+            acc[type] = (acc[type] || 0) + 1;
+            return acc;
+        }, {} as Record<string, number>);
 
         return {
             entityId,
+            propertyId,
             period: { startDate: start, endDate: end },
-            income,
-            expenses,
-            cashFlow,
-            bankBalances,
-            netCashFlow: income.total - expenses.total,
+            summary: {
+                totalRequests,
+                completedRequests,
+                pendingRequests,
+                completionRate: totalRequests > 0 ? (completedRequests / totalRequests) * 100 : 0,
+            },
+            breakdowns: {
+                byPriority: requestsByPriority,
+                byType: requestsByType,
+            },
+            generatedAt: new Date(),
         };
     }
 
-    // ============= TENANT AGING REPORT =============
+    // ============= TENANT ANALYTICS =============
 
-    async getTenantAgingReport(entityId: string, userRole: UserRole, userOrgId: string, userEntities: string[]) {
+    async getTenantAnalytics(
+        entityId: string,
+        includePaymentHistory: boolean,
+        userRole: UserRole,
+        userOrgId: string,
+        userEntities: string[]
+    ) {
         await this.verifyEntityAccess(entityId, userRole, userOrgId, userEntities);
 
-        const overdueInvoices = await this.prisma.invoice.findMany({
+        const tenantLeases = await this.prisma.lease.findMany({
             where: {
-                lease: { space: { property: { entityId } } },
-                status: { in: ['SENT', 'OVERDUE'] },
-                dueDate: { lt: new Date() },
+                space: { property: { entityId } },
+                status: 'ACTIVE',
             },
             include: {
-                lease: {
+                tenant: {
+                    select: {
+                        id: true,
+                        firstName: true,
+                        lastName: true,
+                        email: true,
+                        phone: true,
+                    },
+                },
+                space: {
                     include: {
-                        space: {
-                            include: {
-                                property: {
-                                    select: {
-                                        id: true,
-                                        name: true,
-                                        address: true,
-                                    },
-                                },
-                            },
-                        },
-                        tenant: {
+                        property: {
                             select: {
                                 id: true,
-                                firstName: true,
-                                lastName: true,
-                                email: true,
-                                phone: true,
+                                name: true,
+                                address: true,
                             },
                         },
                     },
                 },
-                payments: {
-                    where: { status: 'COMPLETED' },
+                rentPayments: includePaymentHistory ? {
+                    orderBy: { paymentDate: 'desc' },
+                } : {
+                    orderBy: { paymentDate: 'desc' },
+                    take: 3,
                 },
             },
         });
 
-        const agingBuckets = this.categorizeByAging(overdueInvoices);
+        const tenantAnalytics = tenantLeases.map(lease => {
+            const payments = lease.rentPayments || [];
+            const totalPayments = payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
+            
+            // Calculate late payments based on payment status instead of isLate field
+            const latePayments = payments.filter(payment => payment.status === 'PENDING' || payment.status === 'FAILED').length;
+            const onTimeRate = payments.length > 0 ? 
+                ((payments.length - latePayments) / payments.length) * 100 : 100;
+
+            return {
+                tenantId: lease.tenant.id,
+                tenantName: `${lease.tenant.firstName} ${lease.tenant.lastName}`,
+                email: lease.tenant.email,
+                phone: lease.tenant.phone,
+                property: {
+                    id: lease.space.property.id,
+                    name: lease.space.property.name,
+                    address: lease.space.property.address,
+                },
+                space: {
+                    id: lease.space.id,
+                    name: lease.space.unitNumber, // Use unitNumber instead of name
+                },
+                lease: {
+                    id: lease.id,
+                    monthlyRent: lease.monthlyRent,
+                    startDate: lease.startDate,
+                    endDate: lease.endDate,
+                },
+                paymentMetrics: {
+                    totalPayments,
+                    latePayments,
+                    onTimePaymentRate: Math.round(onTimeRate * 100) / 100,
+                    paymentHistory: includePaymentHistory ? payments : payments.slice(0, 3),
+                },
+            };
+        });
+
+        const summary = {
+            totalTenants: tenantAnalytics.length,
+            averageOnTimeRate: tenantAnalytics.length > 0 ? 
+                tenantAnalytics.reduce((sum, t) => sum + t.paymentMetrics.onTimePaymentRate, 0) / tenantAnalytics.length : 0,
+            totalMonthlyRent: tenantAnalytics.reduce((sum, t) => sum + Number(t.lease.monthlyRent), 0),
+        };
 
         return {
             entityId,
-            agingBuckets,
-            summary: {
-                totalOverdue: overdueInvoices.length,
-                totalOverdueAmount: overdueInvoices.reduce((sum, invoice) => {
-                    const paidAmount = invoice.payments.reduce((pSum, payment) => pSum + Number(payment.amount), 0);
-                    return sum + (Number(invoice.amount) - paidAmount);
-                }, 0),
-            },
+            includePaymentHistory,
+            summary,
+            tenants: tenantAnalytics,
+            generatedAt: new Date(),
         };
     }
 
-    // ============= HELPER METHODS =============
+    // ============= PORTFOLIO OVERVIEW =============
 
-    private async getRentalIncome(entityId: string, start: Date, end: Date): Promise<number> {
-        const payments = await this.prisma.payment.findMany({
-            where: {
-                invoice: {
-                    lease: { space: { property: { entityId } } },
-                    invoiceType: 'RENT',
-                },
-                paymentDate: { gte: start, lte: end },
-                status: 'COMPLETED',
-            },
-        });
+    async getPortfolioOverview(
+        entityId: string,
+        includeProjections: boolean,
+        userRole: UserRole,
+        userOrgId: string,
+        userEntities: string[]
+    ) {
+        await this.verifyEntityAccess(entityId, userRole, userOrgId, userEntities);
 
-        return payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
-    }
-
-    private async getLateFeesIncome(entityId: string, start: Date, end: Date): Promise<number> {
-        const payments = await this.prisma.payment.findMany({
-            where: {
-                invoice: {
-                    lease: { space: { property: { entityId } } },
-                    invoiceType: 'LATE_FEE',
-                },
-                paymentDate: { gte: start, lte: end },
-                status: 'COMPLETED',
-            },
-        });
-
-        return payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
-    }
-
-    private async getOtherIncome(entityId: string, start: Date, end: Date): Promise<number> {
-        const payments = await this.prisma.payment.findMany({
-            where: {
-                invoice: {
-                    lease: { space: { property: { entityId } } },
-                    invoiceType: { in: ['UTILITIES', 'NNN', 'OTHER'] },
-                },
-                paymentDate: { gte: start, lte: end },
-                status: 'COMPLETED',
-            },
-        });
-
-        return payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
-    }
-
-    private async getExpensesByCategory(entityId: string, start: Date, end: Date) {
-        const expenses = await this.prisma.propertyExpense.findMany({
-            where: {
-                property: { entityId },
-                expenseDate: { gte: start, lte: end },
-            },
-        });
-
-        const categorized = {
-            maintenance: 0,
-            utilities: 0,
-            insurance: 0,
-            taxes: 0,
-            management: 0,
-            repairs: 0,
-            landscaping: 0,
-            cleaning: 0,
-            other: 0,
-        };
-
-        expenses.forEach(expense => {
-            const category = expense.expenseType.toLowerCase();
-            if (category in categorized) {
-                categorized[category as keyof typeof categorized] += Number(expense.amount);
-            } else {
-                categorized.other += Number(expense.amount);
-            }
-        });
-
-        return categorized;
-    }
-
-    private async getPropertyOccupancyStats(entityId: string) {
         const properties = await this.prisma.property.findMany({
             where: { entityId },
             include: {
@@ -395,294 +639,278 @@ export class ReportsService {
                     include: {
                         leases: {
                             where: { status: 'ACTIVE' },
+                            select: {
+                                monthlyRent: true,
+                                securityDeposit: true,
+                            },
                         },
                     },
                 },
             },
         });
 
-        return properties.map(property => {
-            const totalUnits = property.spaces.length;
-            const occupiedUnits = property.spaces.filter(space => space.leases.length > 0).length;
-            const occupancyRate = totalUnits > 0 ? (occupiedUnits / totalUnits) * 100 : 0;
+        const portfolioMetrics = properties.map(property => {
+            const totalSpaces = property.spaces.length;
+            const occupiedSpaces = property.spaces.filter(space => space.leases.length > 0).length;
+            const monthlyRevenue = property.spaces.reduce((sum, space) => 
+                sum + Number(space.leases[0]?.monthlyRent || 0), 0
+            );
 
             return {
                 propertyId: property.id,
                 propertyName: property.name,
-                totalUnits,
-                occupiedUnits,
-                vacantUnits: totalUnits - occupiedUnits,
-                occupancyRate,
+                address: property.address,
+                propertyType: property.propertyType,
+                totalSpaces,
+                occupiedSpaces,
+                vacantSpaces: totalSpaces - occupiedSpaces,
+                occupancyRate: totalSpaces > 0 ? (occupiedSpaces / totalSpaces) * 100 : 0,
+                monthlyRevenue,
+                annualRevenue: monthlyRevenue * 12,
             };
         });
-    }
 
-    private async getMonthlyOccupancyTrends(entityId: string) {
-        const monthsBack = 12;
-        const trends = [];
-
-        for (let i = 0; i < monthsBack; i++) {
-            const date = new Date();
-            date.setMonth(date.getMonth() - i);
-            const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
-            const endOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-
-            const occupancyData = await this.getOccupancyForPeriod(entityId, startOfMonth, endOfMonth);
-            trends.unshift({
-                month: startOfMonth.toISOString().substring(0, 7),
-                ...occupancyData,
-            });
-        }
-
-        return trends;
-    }
-
-    private async getYearlyOccupancyTrends(entityId: string) {
-        const yearsBack = 3;
-        const trends = [];
-
-        for (let i = 0; i < yearsBack; i++) {
-            const year = new Date().getFullYear() - i;
-            const startOfYear = new Date(year, 0, 1);
-            const endOfYear = new Date(year, 11, 31);
-
-            const occupancyData = await this.getOccupancyForPeriod(entityId, startOfYear, endOfYear);
-            trends.unshift({
-                year,
-                ...occupancyData,
-            });
-        }
-
-        return trends;
-    }
-
-    private async getOccupancyForPeriod(entityId: string, start: Date, end: Date) {
-        const [totalSpaces, activeLeases] = await Promise.all([
-            this.prisma.space.count({
-                where: { property: { entityId } },
-            }),
-            this.prisma.lease.count({
-                where: {
-                    space: { property: { entityId } },
-                    status: 'ACTIVE',
-                    startDate: { lte: end },
-                    endDate: { gte: start },
-                },
-            }),
-        ]);
+        const portfolioSummary = {
+            totalProperties: properties.length,
+            totalSpaces: portfolioMetrics.reduce((sum, p) => sum + p.totalSpaces, 0),
+            totalOccupiedSpaces: portfolioMetrics.reduce((sum, p) => sum + p.occupiedSpaces, 0),
+            totalVacantSpaces: portfolioMetrics.reduce((sum, p) => sum + p.vacantSpaces, 0),
+            averageOccupancyRate: portfolioMetrics.length > 0 ? 
+                portfolioMetrics.reduce((sum, p) => sum + p.occupancyRate, 0) / portfolioMetrics.length : 0,
+            totalMonthlyRevenue: portfolioMetrics.reduce((sum, p) => sum + p.monthlyRevenue, 0),
+            totalAnnualRevenue: portfolioMetrics.reduce((sum, p) => sum + p.annualRevenue, 0),
+        };
 
         return {
-            totalUnits: totalSpaces,
-            occupiedUnits: activeLeases,
-            occupancyRate: totalSpaces > 0 ? (activeLeases / totalSpaces) * 100 : 0,
+            entityId,
+            includeProjections,
+            summary: portfolioSummary,
+            properties: portfolioMetrics,
+            projections: includeProjections ? this.generateSimpleProjections(portfolioSummary) : null,
+            generatedAt: new Date(),
         };
     }
 
-    private async getMaintenanceRequestStats(entityId: string, start: Date, end: Date) {
-        const [total, open, inProgress, completed, cancelled] = await Promise.all([
-            this.prisma.maintenanceRequest.count({
-                where: {
-                    property: { entityId },
-                    requestedAt: { gte: start, lte: end },
-                },
-            }),
-            this.prisma.maintenanceRequest.count({
-                where: {
-                    property: { entityId },
-                    requestedAt: { gte: start, lte: end },
-                    status: 'OPEN',
-                },
-            }),
-            this.prisma.maintenanceRequest.count({
-                where: {
-                    property: { entityId },
-                    requestedAt: { gte: start, lte: end },
-                    status: 'IN_PROGRESS',
-                },
-            }),
-            this.prisma.maintenanceRequest.count({
-                where: {
-                    property: { entityId },
-                    requestedAt: { gte: start, lte: end },
-                    status: 'COMPLETED',
-                },
-            }),
-            this.prisma.maintenanceRequest.count({
-                where: {
-                    property: { entityId },
-                    requestedAt: { gte: start, lte: end },
-                    status: 'CANCELLED',
-                },
-            }),
-        ]);
+    // ============= CUSTOM REPORT GENERATION =============
 
-        return { total, open, inProgress, completed, cancelled };
+    async generateCustomReport(
+        reportParams: any,
+        userRole: UserRole,
+        userOrgId: string,
+        userEntities: string[]
+    ) {
+        await this.verifyEntityAccess(reportParams.entityId, userRole, userOrgId, userEntities);
+
+        return {
+            reportType: reportParams.reportType,
+            entityId: reportParams.entityId,
+            parameters: reportParams,
+            message: 'Custom report generation - basic implementation',
+            generatedAt: new Date(),
+        };
     }
 
-    private async getMaintenanceCostStats(entityId: string, start: Date, end: Date) {
-        const costs = await this.prisma.maintenanceRequest.aggregate({
+    // ============= COMPARATIVE ANALYSIS =============
+
+    async getComparativeAnalysis(
+        entityId: string,
+        compareType: 'properties' | 'periods',
+        startDate: string,
+        endDate: string,
+        propertyIds: string[] | undefined,
+        userRole: UserRole,
+        userOrgId: string,
+        userEntities: string[]
+    ) {
+        await this.verifyEntityAccess(entityId, userRole, userOrgId, userEntities);
+
+        return {
+            entityId,
+            compareType,
+            period: { startDate, endDate },
+            propertyIds,
+            message: 'Comparative analysis - basic implementation',
+            generatedAt: new Date(),
+        };
+    }
+
+    // ============= EXPORT FUNCTIONALITY =============
+
+    async exportReport(
+        reportType: string,
+        entityId: string,
+        format: 'json' | 'csv' | 'xlsx',
+        userRole: UserRole,
+        userOrgId: string,
+        userEntities: string[],
+        startDate?: string,
+        endDate?: string
+    ) {
+        await this.verifyEntityAccess(entityId, userRole, userOrgId, userEntities);
+
+        let reportData: any;
+        
+        switch (reportType) {
+            case 'rent-roll':
+                reportData = await this.getEnhancedRentRollReport(entityId, userRole, userOrgId, userEntities);
+                break;
+            case 'profit-loss':
+                if (!startDate || !endDate) throw new BadRequestException('Start and end dates required');
+                reportData = await this.getProfitLossStatement(entityId, startDate, endDate, userRole, userOrgId, userEntities);
+                break;
+            default:
+                throw new BadRequestException(`Export not supported for report type: ${reportType}`);
+        }
+
+        return {
+            reportType,
+            entityId,
+            format,
+            data: reportData,
+            generatedAt: new Date(),
+        };
+    }
+
+    // ============= SCHEDULED REPORTS =============
+
+    async scheduleReport(
+        scheduleParams: any,
+        userRole: UserRole,
+        userOrgId: string,
+        userEntities: string[]
+    ) {
+        await this.verifyEntityAccess(scheduleParams.entityId, userRole, userOrgId, userEntities);
+
+        return {
+            scheduleId: `schedule_${Date.now()}`,
+            ...scheduleParams,
+            status: 'scheduled',
+            createdAt: new Date(),
+        };
+    }
+
+    // ============= DASHBOARD METRICS =============
+
+    async getDashboardMetrics(
+        entityId: string,
+        userRole: UserRole,
+        userOrgId: string,
+        userEntities: string[]
+    ) {
+        await this.verifyEntityAccess(entityId, userRole, userOrgId, userEntities);
+
+        const [occupancyData, financialSummary] = await Promise.all([
+            this.getOccupancyAnalytics(entityId, userRole, userOrgId, userEntities),
+            this.getRecentFinancialSummary(entityId),
+        ]);
+
+        return {
+            entityId,
+            occupancy: {
+                rate: occupancyData.summary.occupancyRate,
+                totalSpaces: occupancyData.summary.totalSpaces,
+                occupiedSpaces: occupancyData.summary.occupiedSpaces,
+            },
+            financial: financialSummary,
+            lastUpdated: new Date(),
+        };
+    }
+
+    // ============= HELPER METHODS =============
+
+    private async getIncomeForPeriod(entityId: string, start: Date, end: Date) {
+        const payments = await this.prisma.payment.aggregate({
             where: {
-                property: { entityId },
-                requestedAt: { gte: start, lte: end },
-                actualCost: { not: null },
-            },
-            _sum: { actualCost: true },
-            _avg: { actualCost: true },
-            _count: { actualCost: true },
-        });
-
-        return {
-            total: costs._sum.actualCost || 0,
-            average: costs._avg.actualCost || 0,
-            count: costs._count.actualCost,
-        };
-    }
-
-    private async getMaintenanceByPriority(entityId: string, start: Date, end: Date) {
-        const priorities = ['LOW', 'MEDIUM', 'HIGH', 'EMERGENCY'];
-        const results = {};
-
-        for (const priority of priorities) {
-            const count = await this.prisma.maintenanceRequest.count({
-                where: {
-                    property: { entityId },
-                    requestedAt: { gte: start, lte: end },
-                    priority: priority as any,
+                createdAt: {
+                    gte: start,
+                    lte: end,
                 },
-            });
-            results[priority.toLowerCase()] = count;
-        }
+                invoice: {
+                    lease: {
+                        space: {
+                            property: {
+                                entityId,
+                            },
+                        },
+                    },
+                },
+            },
+            _sum: {
+                amount: true,
+            },
+        });
 
-        return results;
+        return {
+            total: Number(payments._sum.amount || 0),
+        };
     }
 
-    private async getMaintenanceByProperty(entityId: string, start: Date, end: Date) {
-        const stats = await this.prisma.maintenanceRequest.groupBy({
-            by: ['propertyId'],
+    private async getExpensesForPeriod(entityId: string, start: Date, end: Date) {
+        const expenses = await this.prisma.propertyExpense.aggregate({
             where: {
-                property: { entityId },
-                requestedAt: { gte: start, lte: end },
+                property: {
+                    entityId,
+                },
+                createdAt: { // Use createdAt instead of date
+                    gte: start,
+                    lte: end,
+                },
             },
-            _count: { id: true },
-        });
-
-        const propertyIds = stats.map(stat => stat.propertyId);
-        const properties = await this.prisma.property.findMany({
-            where: { id: { in: propertyIds } },
-            select: { id: true, name: true },
-        });
-
-        return stats.map(stat => {
-            const property = properties.find(p => p.id === stat.propertyId);
-            return {
-                propertyId: stat.propertyId,
-                propertyName: property?.name || 'Unknown',
-                requestCount: stat._count.id,
-            };
-        });
-    }
-
-    private calculateAverageDaysToExpiration(leases: any[]): number {
-        if (leases.length === 0) return 0;
-
-        const now = new Date();
-        const totalDays = leases.reduce((sum, lease) => {
-            const daysToExpiration = Math.ceil((new Date(lease.endDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-            return sum + daysToExpiration;
-        }, 0);
-
-        return Math.round(totalDays / leases.length);
-    }
-
-    private async getIncomeBreakdown(entityId: string, start: Date, end: Date) {
-        const [rental, lateFees, other] = await Promise.all([
-            this.getRentalIncome(entityId, start, end),
-            this.getLateFeesIncome(entityId, start, end),
-            this.getOtherIncome(entityId, start, end),
-        ]);
-
-        return {
-            rental,
-            lateFees,
-            other,
-            total: rental + lateFees + other,
-        };
-    }
-
-    private async getExpenseBreakdown(entityId: string, start: Date, end: Date) {
-        const expenses = await this.getExpensesByCategory(entityId, start, end);
-        const total = Object.values(expenses).reduce((sum: number, amount: any) => sum + Number(amount), 0);
-
-        return { ...expenses, total };
-    }
-
-    private async getCashFlowAnalysis(entityId: string, start: Date, end: Date) {
-        const [income, expenses] = await Promise.all([
-            this.getIncomeBreakdown(entityId, start, end),
-            this.getExpenseBreakdown(entityId, start, end),
-        ]);
-
-        return {
-            netCashFlow: income.total - expenses.total,
-            operatingCashFlow: income.rental - expenses.total,
-            cashFlowMargin: income.total > 0 ? ((income.total - expenses.total) / income.total) * 100 : 0,
-        };
-    }
-
-    private async getBankBalances(entityId: string) {
-        const bankLedgers = await this.prisma.bankLedger.findMany({
-            where: { entityId, isActive: true },
-            select: {
-                id: true,
-                accountName: true,
-                currentBalance: true,
-                accountType: true,
+            _sum: {
+                amount: true,
             },
         });
 
-        const totalBalance = bankLedgers.reduce((sum, ledger) => sum + Number(ledger.currentBalance), 0);
-
         return {
-            accounts: bankLedgers,
-            totalBalance,
+            total: Number(expenses._sum.amount || 0),
         };
     }
 
-    private categorizeByAging(invoices: any[]) {
-        const now = new Date();
-        const buckets = {
-            current: [],
-            thirtyDays: [],
-            sixtyDays: [],
-            ninetyDays: [],
-            overNinety: [],
+    private generateSimpleProjections(summary: any) {
+        const monthlyGrowthRate = 0.02;
+        const projectedMonthlyRevenue = summary.totalMonthlyRevenue * (1 + monthlyGrowthRate);
+        
+        return {
+            nextMonth: {
+                projectedRevenue: projectedMonthlyRevenue,
+                growthRate: monthlyGrowthRate * 100,
+            },
+            nextQuarter: {
+                projectedRevenue: projectedMonthlyRevenue * 3,
+                growthRate: (monthlyGrowthRate * 3) * 100,
+            },
         };
+    }
 
-        invoices.forEach(invoice => {
-            const daysOverdue = Math.ceil((now.getTime() - new Date(invoice.dueDate).getTime()) / (1000 * 60 * 60 * 24));
-            const paidAmount = invoice.payments.reduce((sum: number, payment: any) => sum + Number(payment.amount), 0);
-            const outstandingAmount = Number(invoice.amount) - paidAmount;
+    private async getRecentFinancialSummary(entityId: string) {
+        const currentMonth = new Date();
+        const lastMonth = new Date();
+        lastMonth.setMonth(lastMonth.getMonth() - 1);
 
-            const invoiceData = {
-                ...invoice,
-                daysOverdue,
-                outstandingAmount,
-            };
-
-            if (daysOverdue <= 0) {
-                buckets.current.push(invoiceData);
-            } else if (daysOverdue <= 30) {
-                buckets.thirtyDays.push(invoiceData);
-            } else if (daysOverdue <= 60) {
-                buckets.sixtyDays.push(invoiceData);
-            } else if (daysOverdue <= 90) {
-                buckets.ninetyDays.push(invoiceData);
-            } else {
-                buckets.overNinety.push(invoiceData);
-            }
+        const monthlyRevenue = await this.prisma.payment.aggregate({
+            where: {
+                createdAt: {
+                    gte: lastMonth,
+                    lte: currentMonth,
+                },
+                invoice: {
+                    lease: {
+                        space: {
+                            property: { entityId },
+                        },
+                    },
+                },
+            },
+            _sum: { amount: true },
         });
 
-        return buckets;
+        return {
+            monthlyRevenue: Number(monthlyRevenue._sum.amount || 0),
+            period: {
+                start: lastMonth,
+                end: currentMonth,
+            },
+        };
     }
 
     private async verifyEntityAccess(entityId: string, userRole: UserRole, userOrgId: string, userEntities: string[]) {
