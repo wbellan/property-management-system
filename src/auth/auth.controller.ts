@@ -55,6 +55,16 @@ export class AuthController {
         return this.authService.logout(userId);
     }
 
+    @Get('validate')
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth('JWT-auth')
+    @ApiOperation({ summary: 'Validate JWT token and get user data' })
+    @ApiResponse({ status: 200, description: 'Token is valid, user data returned' })
+    @ApiResponse({ status: 401, description: 'Token is invalid or expired' })
+    async validateToken(@CurrentUser('userId') userId: string) {
+        return this.authService.validateToken(userId);
+    }
+
     @Get('profile')
     @UseGuards(JwtAuthGuard)
     @ApiBearerAuth('JWT-auth')

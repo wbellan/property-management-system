@@ -163,6 +163,71 @@ export class AuthService {
         }
     }
 
+    async validateToken(userId: string) {
+        try {
+            // Find user with full details including relationships
+            const user = await this.prisma.user.findUnique({
+                where: { id: userId },
+                include: {
+                    organization: {
+                        select: {
+                            id: true,
+                            name: true,
+                        },
+                    },
+                    userEntities: {
+                        include: {
+                            entity: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                },
+                            },
+                        },
+                    },
+                    userProperties: {
+                        include: {
+                            property: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    address: true,
+                                },
+                            },
+                        },
+                    },
+                },
+            });
+
+            if (!user) {
+                throw new UnauthorizedException('User not found');
+            }
+
+            // Check if user is still active
+            if (user.status !== 'ACTIVE') {
+                throw new UnauthorizedException('Account is not active');
+            }
+
+            // Return user data in the same format as login
+            return {
+                success: true,
+                user: {
+                    id: user.id,
+                    email: user.email,
+                    firstName: user.firstName,
+                    lastName: user.lastName,
+                    role: user.role,
+                    organizationId: user.organizationId,
+                    organization: user.organization,
+                    entities: user.userEntities.map(ue => ue.entity),
+                    properties: user.userProperties.map(up => up.property),
+                },
+            };
+        } catch (error) {
+            throw new UnauthorizedException('Token validation failed');
+        }
+    }
+
     async changePassword(userId: string, changePasswordDto: ChangePasswordDto) {
         // Get user
         const user = await this.prisma.user.findUnique({
