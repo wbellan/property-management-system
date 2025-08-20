@@ -44,6 +44,17 @@ export class AuthController {
         return this.authService.login(loginDto);
     }
 
+    @Post('logout')
+    @UseGuards(JwtAuthGuard)
+    @HttpCode(HttpStatus.OK)
+    @ApiBearerAuth('JWT-auth')
+    @ApiOperation({ summary: 'Logout user' })
+    @ApiResponse({ status: 200, description: 'Logout successful' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    async logout(@CurrentUser('userId') userId: string) {
+        return this.authService.logout(userId);
+    }
+
     @Get('profile')
     @UseGuards(JwtAuthGuard)
     @ApiBearerAuth('JWT-auth')

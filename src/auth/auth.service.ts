@@ -139,6 +139,30 @@ export class AuthService {
         };
     }
 
+    async logout(userId: string) {
+        try {
+            // Verify user exists
+            const user = await this.prisma.user.findUnique({
+                where: { id: userId },
+            });
+
+            if (!user) {
+                throw new UnauthorizedException('User not found');
+            }
+
+            // Optional: You could store revoked tokens in database if needed
+            // For now, we'll just return success since JWT tokens are stateless
+            // The frontend will remove the token from localStorage
+
+            return {
+                success: true,
+                message: 'Logout successful'
+            };
+        } catch (error) {
+            throw new UnauthorizedException('Logout failed');
+        }
+    }
+
     async changePassword(userId: string, changePasswordDto: ChangePasswordDto) {
         // Get user
         const user = await this.prisma.user.findUnique({
