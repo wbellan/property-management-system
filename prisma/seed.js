@@ -678,6 +678,61 @@ async function main() {
 
     console.log('✅ Created 4 maintenance assignments');
 
+    // After creating existing users, add invitation fields for demo
+    await prisma.user.updateMany({
+        where: { organizationId: organization.id },
+        data: {
+            emailVerified: true,
+        }
+    });
+
+    // Create demo tenant profiles for existing tenant users
+    const existingTenantUsers = await prisma.user.findMany({
+        where: {
+            organizationId: organization.id,
+            role: 'TENANT'
+        }
+    });
+
+    for (const tenantUser of existingTenantUsers) {
+        await prisma.tenant.upsert({
+            where: { userId: tenantUser.id },
+            update: {},
+            create: {
+                userId: tenantUser.id,
+                firstName: tenantUser.firstName,
+                lastName: tenantUser.lastName,
+                email: tenantUser.email,
+                phone: tenantUser.phone || '+1-555-0000',
+                emergencyContactName: 'Emergency Contact',
+                emergencyContactPhone: '+1-555-9999',
+                monthlyIncome: 5000.00,
+                organizationId: organization.id,
+                notes: 'Demo tenant profile created during seed',
+            }
+        });
+    }
+
+    // Create a tenant without portal access (Tenant record only, no User)
+    await prisma.tenant.create({
+        data: {
+            firstName: 'Sarah',
+            lastName: 'Wilson',
+            email: 'sarah.wilson@email.com',
+            phone: '+1-555-0301',
+            emergencyContactName: 'Mike Wilson',
+            emergencyContactPhone: '+1-555-0302',
+            monthlyIncome: 4500.00,
+            isBusinessTenant: true,
+            businessName: 'Wilson Consulting LLC',
+            businessTaxId: '12-3456789',
+            organizationId: organization.id,
+            notes: 'Business tenant - no portal access',
+        }
+    });
+
+    console.log('✅ Enhanced user and tenant system seeded');
+
     console.log('🎉 Database seeded successfully!');
     console.log('\n📋 Demo Accounts Created:');
     console.log('Super Admin: admin@demoproperties.com / admin123');
@@ -692,7 +747,8 @@ async function main() {
     console.log('- 2 Active Leases');
     console.log('- 3 Vendors (HVAC, Plumbing, Electrical)');
     console.log('- 4 Maintenance Requests with Assignments');
-    console.log('- Financial records (invoices, payments, ledger entries)');
+    console.log('- 5 Financial records (invoices, payments, ledger entries)');
+    console.log('- 6 Enhanced user and tenant system seeded');
 }
 
 main()

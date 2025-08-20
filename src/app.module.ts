@@ -16,6 +16,8 @@ import { LeasesModule } from './leases/leases.module';
 import { FinancialsModule } from './financials/financials.module';
 import { MaintenanceModule } from './maintenance/maintenance.module';
 import { ReportsModule } from './reports/reports.module';
+import { TenantsModule } from './tenants/tenants.module';
+import { EmailModule } from './email/email.module';
 
 @Module({
     imports: [
@@ -47,6 +49,8 @@ import { ReportsModule } from './reports/reports.module';
         FinancialsModule,
         MaintenanceModule,
         ReportsModule,
+        TenantsModule,
+        EmailModule
     ],
     providers: [
         {

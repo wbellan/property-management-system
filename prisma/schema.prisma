@@ -26,7 +26,8 @@ model Organization {
   // Relationships
   entities Entity[]
   users    User[]
-
+  tenants  Tenant[]
+  
   @@map("organizations")
 }
 
@@ -135,6 +136,11 @@ model User {
   status        UserStatus @default(PENDING)
   organizationId String
 
+  inviteToken    String?    @unique
+  inviteExpires  DateTime?
+  invitedBy      String?    // User ID who sent invite
+  emailVerified  Boolean    @default(false)
+
   lastLoginAt DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -146,6 +152,7 @@ model User {
   leases           Lease[]
   maintenanceReqs  MaintenanceRequest[]
   ledgerEntries    LedgerEntry[]
+  tenantProfile    Tenant?
 
   @@map("users")
 }
@@ -522,4 +529,44 @@ model PropertyExpense {
   property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
 
   @@map("property_expenses")
+}
+
+model Tenant {
+  id                    String   @id @default(cuid())
+  userId                String?  @unique // Optional link to User for portal access
+  firstName             String
+  lastName              String
+  email                 String
+  phone                 String
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  dateOfBirth          DateTime?
+  ssn                  String?   // encrypted in production
+  
+  // Business tenant fields
+  isBusinessTenant     Boolean  @default(false)
+  businessName         String?
+  businessTaxId        String?
+  
+  // Background info
+  previousLandlord     String?
+  employerInfo         String?
+  monthlyIncome        Decimal? @db.Decimal(10, 2)
+  
+  // System fields
+  organizationId       String
+  isActive             Boolean  @default(true)
+  notes                String?
+  
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  // Relationships
+  organization         Organization @relation(fields: [organizationId], references: [id])
+  user                 User?        @relation(fields: [userId], references: [id])
+  
+  // Link to existing leases via tenantId (we'll need to adjust lease model)
+  // leases               Lease[]  // We'll handle this via User relationship
+
+  @@map("tenants")
 }
