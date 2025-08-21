@@ -476,7 +476,7 @@ export class UsersService {
         const skip = (page - 1) * limit;
 
         try {
-            const [users, total] = await Promise.all([
+            const [users, total, pendingInvitations] = await Promise.all([
                 this.prisma.user.findMany({
                     where: { organizationId },
                     include: {
@@ -507,6 +507,23 @@ export class UsersService {
                 }),
                 this.prisma.user.count({
                     where: { organizationId }
+                }),
+                // Get pending invitations for this organization
+                this.prisma.userInvitation.findMany({
+                    where: {
+                        organizationId,
+                        status: InvitationStatus.PENDING,
+                        expiresAt: { gt: new Date() }
+                    },
+                    select: {
+                        id: true,
+                        email: true,
+                        firstName: true,
+                        lastName: true,
+                        role: true,
+                        createdAt: true,
+                        expiresAt: true
+                    }
                 })
             ]);
 
@@ -517,20 +534,44 @@ export class UsersService {
                     ...userWithoutSensitive,
                     entities: user.entities || [],
                     properties: user.properties || [],
-                    isPendingInvite: !!inviteToken, // Use the destructured inviteToken
+                    isPendingInvite: false
                 };
             });
 
-            console.log('formattedUsers', formattedUsers);
+            // Format pending invitations as "users"
+            const pendingInviteUsers = pendingInvitations.map(invitation => ({
+                id: invitation.id,
+                email: invitation.email,
+                firstName: invitation.firstName,
+                lastName: invitation.lastName,
+                role: invitation.role,
+                status: 'PENDING',
+                emailVerified: false,
+                lastLoginAt: null,
+                isPendingInvite: true,
+                entities: [],
+                properties: [],
+                tenantProfile: null,
+                createdAt: invitation.createdAt,
+                organizationId
+            }));
+
+            const allUsersAndInvites = [...formattedUsers, ...pendingInviteUsers];
+
+            console.log('Combined users and invitations:', {
+                usersCount: formattedUsers.length,
+                pendingInvitesCount: pendingInviteUsers.length,
+                totalCount: allUsersAndInvites.length
+            });
 
             return {
                 success: true,
-                data: formattedUsers,
+                data: allUsersAndInvites,
                 pagination: {
                     page,
                     limit,
-                    total,
-                    pages: Math.ceil(total / limit),
+                    total: allUsersAndInvites.length,
+                    pages: Math.ceil(allUsersAndInvites.length / limit),
                 }
             };
         } catch (error) {

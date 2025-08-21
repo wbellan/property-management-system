@@ -223,7 +223,7 @@ export class UsersController {
     @ApiBearerAuth('JWT-auth')
     async resendInvitation(
         @Param('id') invitationId: string,
-        @CurrentUser('id') requesterId: string
+        @CurrentUser('userId') requesterId: string  // Changed from 'id' to 'userId'
     ) {
         const result = await this.usersService.resendInvitation(invitationId, requesterId);
 
@@ -460,7 +460,7 @@ export class UsersController {
     @ApiBearerAuth('JWT-auth')
     async cancelInvitation(
         @Param('id') invitationId: string,
-        @CurrentUser('id') requesterId: string
+        @CurrentUser('userId') requesterId: string  // Changed from 'id' to 'userId'
     ) {
         const result = await this.usersService.cancelInvitation(invitationId, requesterId);
 
