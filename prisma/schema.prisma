@@ -21,6 +21,7 @@ model Organization {
   entities    Entity[]
   tenants     Tenant[]
   users       User[]
+  userInvitations UserInvitation[]
 
   @@map("organizations")
 }
@@ -119,6 +120,7 @@ model User {
   organization    Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   entities        Entity[]             @relation("UserEntities")
   properties      Property[]           @relation("UserProperties")
+  sentInvitations UserInvitation[] @relation("UserInvitations")
 
   @@map("users")
 }
@@ -145,6 +147,33 @@ model UserProperty {
 
   @@unique([userId, propertyId])
   @@map("user_properties")
+}
+
+model UserInvitation {
+  id              String            @id @default(cuid())
+  firstName       String
+  lastName        String
+  email           String
+  role            UserRole
+  organizationId  String
+  invitedById     String
+  token           String            @unique
+  status          InvitationStatus  @default(PENDING)
+  entityIds       String[]          @default([])
+  propertyIds     String[]          @default([])
+  expiresAt       DateTime
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  // Relations
+  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy       User             @relation("UserInvitations", fields: [invitedById], references: [id])
+
+  @@map("user_invitations")
+  @@index([token])
+  @@index([email])
+  @@index([organizationId])
+  @@index([expiresAt])
 }
 
 model Lease {
@@ -497,4 +526,11 @@ enum ExpenseType {
   LANDSCAPING
   CLEANING
   OTHER
+}
+
+enum InvitationStatus {
+  PENDING
+  COMPLETED
+  EXPIRED
+  CANCELLED
 }

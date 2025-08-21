@@ -27,11 +27,29 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         });
     }
 
-    async validate(payload: JwtPayload) {
+    async validate(payload: any) {
+        console.log('JWT Strategy - Raw payload:', payload);
+
+        // JWT standard uses 'sub' (subject) for user ID, but handle both for compatibility
+        const userId = payload.sub || payload.userId || payload.id;
+
+        if (!userId) {
+            console.error('JWT Strategy - No user ID in payload. Payload keys:', Object.keys(payload));
+            throw new UnauthorizedException('Invalid token payload - missing user identifier');
+        }
+
+        console.log('JWT Strategy - Extracted userId:', userId);
+
+        // Load full user data with relationships
         const user = await this.prisma.user.findUnique({
-            where: { id: payload.sub },
+            where: { id: userId },
             include: {
-                organization: true,
+                organization: {
+                    select: {
+                        id: true,
+                        name: true
+                    }
+                },
                 userEntities: {
                     include: {
                         entity: true,
@@ -42,11 +60,17 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
                         property: true,
                     },
                 },
-            },
+            }
         });
 
-        if (!user || user.status !== 'ACTIVE') {
-            throw new UnauthorizedException('User not found or inactive');
+        if (!user) {
+            console.error('JWT Strategy - User not found:', userId);
+            throw new UnauthorizedException('User not found');
+        }
+
+        if (user.status !== 'ACTIVE') {
+            console.error('JWT Strategy - User not active:', userId);
+            throw new UnauthorizedException('User account is not active');
         }
 
         // Update last login
@@ -55,16 +79,29 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
             data: { lastLoginAt: new Date() },
         });
 
-        return {
-            userId: user.id,
+        // IMPORTANT: Return consistent field names that match frontend expectations
+        const userPayload = {
+            userId: user.id,  // Frontend expects userId, not id
             email: user.email,
-            role: user.role,
-            organizationId: user.organizationId,
             firstName: user.firstName,
             lastName: user.lastName,
+            role: user.role,
+            organizationId: user.organizationId,
             organization: user.organization,
             entities: user.userEntities.map(ue => ue.entity),
             properties: user.userProperties.map(up => up.property),
+            status: user.status
         };
+
+        console.log('JWT Strategy - Returning user payload:', {
+            userId: userPayload.userId,
+            email: userPayload.email,
+            role: userPayload.role,
+            organizationId: userPayload.organizationId,
+            entitiesCount: userPayload.entities.length,
+            propertiesCount: userPayload.properties.length
+        });
+
+        return userPayload;
     }
 }

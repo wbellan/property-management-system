@@ -2,21 +2,23 @@
 import { PrismaService } from '../prisma/prisma.service';
 import { Injectable, BadRequestException, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { EmailService } from '../email/email.service';
-import { UserRole, UserStatus } from '@prisma/client';
+import { InvitationStatus, UserRole, UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
-import * as crypto from 'crypto';
+import { randomBytes } from 'crypto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateUserAccessDto } from './dto/update-user-access.dto';
+import { CompleteInvitationDto } from './dto/complete-invitation.dto';
+import { InviteUserDto } from './dto/invite-user.dto';
 
-export interface InviteUserDto {
-    email: string;
-    firstName: string;
-    lastName: string;
-    role: UserRole;
-    entityIds?: string[];
-    propertyIds?: string[];
-}
+// export interface InviteUserDto {
+//     email: string;
+//     firstName: string;
+//     lastName: string;
+//     role: UserRole;
+//     entityIds?: string[];
+//     propertyIds?: string[];
+// }
 
 export interface SetupOrganizationDto {
     organizationName: string;
@@ -145,123 +147,315 @@ export class UsersService {
         });
     }
 
-    // Invite user with role
-    async inviteUser(inviterUserId: string, dto: InviteUserDto) {
-        const inviter = await this.prisma.user.findUnique({
-            where: { id: inviterUserId },
-            include: { organization: true }
+    /**
+       * Send user invitation with email
+       */
+    async inviteUser(
+        inviteData: InviteUserDto,
+        invitedById: string,
+        inviterOrgId: string,
+        inviterRole: UserRole,
+        inviterEntityIds: string[]
+    ) {
+        console.log('Invite data received:', {
+            inviteData,
+            invitedById,
+            inviterOrgId,
+            inviterRole,
+            inviterEntityIds
         });
 
-        if (!inviter) {
-            throw new NotFoundException('Inviter not found');
-        }
+        // 1. Validate inviter permissions
+        await this.validateInvitePermissions(inviteData.role, inviterRole);
 
-        // Check if email is already registered
+        // 2. Check if user already exists
         const existingUser = await this.prisma.user.findUnique({
-            where: { email: dto.email }
+            where: { email: inviteData.email }
         });
 
         if (existingUser) {
-            throw new ConflictException('User with this email already exists');
+            throw new BadRequestException('User with this email already exists');
         }
 
-        // Generate invite token
-        const inviteToken = crypto.randomBytes(32).toString('hex');
-        const inviteExpires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+        // 3. Check for existing pending invitation
+        const existingInvitation = await this.prisma.userInvitation.findFirst({
+            where: {
+                email: inviteData.email,
+                status: InvitationStatus.PENDING,
+                expiresAt: { gt: new Date() }
+            }
+        });
 
-        return this.prisma.$transaction(async (tx) => {
-            // Create user with invite token
-            const user = await tx.user.create({
+        if (existingInvitation) {
+            throw new BadRequestException('Pending invitation already exists for this email');
+        }
+
+        // 4. Validate entity/property access
+        if (inviteData.entityIds?.length > 0) {
+            await this.validateEntityAccess(inviteData.entityIds, inviterRole, inviterOrgId, inviterEntityIds);
+        }
+
+        if (inviteData.propertyIds?.length > 0) {
+            await this.validatePropertyAccess(inviteData.propertyIds, inviterRole, inviterOrgId, inviterEntityIds);
+        }
+
+        // 5. Verify organization and inviter exist
+        const organization = await this.prisma.organization.findUnique({
+            where: { id: inviterOrgId },
+            select: { id: true, name: true }
+        });
+
+        if (!organization) {
+            throw new NotFoundException('Organization not found');
+        }
+
+        const inviter = await this.prisma.user.findUnique({
+            where: { id: invitedById },
+            select: { id: true, firstName: true, lastName: true }
+        });
+
+        if (!inviter) {
+            throw new NotFoundException('Inviter user not found');
+        }
+
+        // 6. Generate secure invitation token
+        const inviteToken = this.generateInviteToken();
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 7); // 7 days expiry
+
+        console.log('Creating invitation with:', {
+            firstName: inviteData.firstName,
+            lastName: inviteData.lastName,
+            email: inviteData.email,
+            role: inviteData.role,
+            organizationId: inviterOrgId,
+            invitedById,
+            token: inviteToken,
+            entityIds: inviteData.entityIds || [],
+            propertyIds: inviteData.propertyIds || [],
+            expiresAt,
+            status: InvitationStatus.PENDING
+        });
+
+        // 7. Create invitation record (FIXED - proper relationship handling)
+        const invitation = await this.prisma.userInvitation.create({
+            data: {
+                firstName: inviteData.firstName,
+                lastName: inviteData.lastName,
+                email: inviteData.email,
+                role: inviteData.role,
+                organizationId: inviterOrgId, // Make sure this is not undefined
+                invitedById: invitedById,     // Make sure this is not undefined
+                token: inviteToken,
+                entityIds: inviteData.entityIds || [],
+                propertyIds: inviteData.propertyIds || [],
+                expiresAt,
+                status: InvitationStatus.PENDING
+            },
+            include: {
+                invitedBy: {
+                    select: {
+                        firstName: true,
+                        lastName: true
+                    }
+                },
+                organization: {
+                    select: {
+                        name: true
+                    }
+                }
+            }
+        });
+
+        console.log('Invitation created successfully:', invitation.id);
+
+        // 8. Send invitation email
+        try {
+            await this.emailService.sendInvitation({
+                to: invitation.email,
+                firstName: invitation.firstName,
+                inviterName: `${invitation.invitedBy.firstName} ${invitation.invitedBy.lastName}`,
+                organizationName: invitation.organization.name,
+                inviteToken: invitation.token,
+                role: invitation.role
+            });
+            console.log('Invitation email sent successfully');
+        } catch (emailError) {
+            // Log email error but don't fail the invitation creation
+            console.error('Failed to send invitation email:', emailError);
+            // In production, you might want to queue this for retry
+        }
+
+        return {
+            id: invitation.id,
+            email: invitation.email,
+            firstName: invitation.firstName,
+            lastName: invitation.lastName,
+            role: invitation.role,
+            status: invitation.status,
+            expiresAt: invitation.expiresAt,
+            createdAt: invitation.createdAt
+        };
+    }
+
+    /**
+  * Validate invitation token
+  */
+    async validateInvitation(token: string) {
+        const invitation = await this.prisma.userInvitation.findUnique({
+            where: { token },
+            include: {
+                organization: {
+                    select: {
+                        name: true
+                    }
+                }
+            }
+        });
+
+        if (!invitation) {
+            throw new NotFoundException('Invalid invitation token');
+        }
+
+        if (invitation.status !== InvitationStatus.PENDING) {
+            throw new BadRequestException('Invitation has already been used or cancelled');
+        }
+
+        if (invitation.expiresAt < new Date()) {
+            // Mark as expired
+            await this.prisma.userInvitation.update({
+                where: { id: invitation.id },
+                data: { status: InvitationStatus.EXPIRED }
+            });
+            throw new BadRequestException('Invitation has expired');
+        }
+
+        return {
+            id: invitation.id,
+            firstName: invitation.firstName,
+            lastName: invitation.lastName,
+            email: invitation.email,
+            role: invitation.role,
+            organizationName: invitation.organization.name,
+            expiresAt: invitation.expiresAt
+        };
+    }
+
+    /**
+   * Complete invitation by creating user account
+   */
+    async completeInvitation(completeData: CompleteInvitationDto) {
+        // 1. Validate invitation with organization details
+        const invitation = await this.prisma.userInvitation.findUnique({
+            where: { token: completeData.token },
+            include: {
+                organization: {
+                    select: {
+                        name: true
+                    }
+                }
+            }
+        });
+
+        if (!invitation) {
+            throw new NotFoundException('Invalid invitation token');
+        }
+
+        if (invitation.status !== InvitationStatus.PENDING) {
+            throw new BadRequestException('Invitation has already been used or cancelled');
+        }
+
+        if (invitation.expiresAt < new Date()) {
+            // Mark as expired
+            await this.prisma.userInvitation.update({
+                where: { id: invitation.id },
+                data: { status: InvitationStatus.EXPIRED }
+            });
+            throw new BadRequestException('Invitation has expired');
+        }
+
+        // 2. Check if user already exists
+        const existingUser = await this.prisma.user.findUnique({
+            where: { email: invitation.email }
+        });
+
+        if (existingUser) {
+            throw new BadRequestException('User account already exists');
+        }
+
+        // 3. Hash password
+        const hashedPassword = await bcrypt.hash(completeData.password, 12);
+
+        // 4. Create user and update invitation in transaction
+        const result = await this.prisma.$transaction(async (tx) => {
+            // Create user
+            const newUser = await tx.user.create({
                 data: {
-                    email: dto.email,
-                    firstName: dto.firstName,
-                    lastName: dto.lastName,
-                    passwordHash: '', // Will be set when invitation is completed
-                    role: dto.role,
-                    status: UserStatus.PENDING,
-                    organizationId: inviter.organizationId,
-                    inviteToken,
-                    inviteExpires,
-                    invitedBy: inviterUserId,
+                    email: invitation.email,
+                    firstName: invitation.firstName,
+                    lastName: invitation.lastName,
+                    passwordHash: hashedPassword,
+                    role: invitation.role,
+                    organizationId: invitation.organizationId,
+                    emailVerified: true, // Since they completed invitation
+                    status: 'ACTIVE'
                 }
             });
 
-            // Add entity access if specified
-            if (dto.entityIds?.length) {
-                await tx.userEntity.createMany({
-                    data: dto.entityIds.map(entityId => ({
-                        userId: user.id,
-                        entityId,
-                    }))
+            // Connect entities if specified
+            if (invitation.entityIds.length > 0) {
+                await tx.user.update({
+                    where: { id: newUser.id },
+                    data: {
+                        entities: {
+                            connect: invitation.entityIds.map(id => ({ id }))
+                        }
+                    }
                 });
             }
 
-            // Add property access if specified
-            if (dto.propertyIds?.length) {
-                await tx.userProperty.createMany({
-                    data: dto.propertyIds.map(propertyId => ({
-                        userId: user.id,
-                        propertyId,
-                    }))
+            // Connect properties if specified
+            if (invitation.propertyIds.length > 0) {
+                await tx.user.update({
+                    where: { id: newUser.id },
+                    data: {
+                        properties: {
+                            connect: invitation.propertyIds.map(id => ({ id }))
+                        }
+                    }
                 });
             }
 
-            // Send invitation email
-            await this.emailService.sendInvitation({
-                to: dto.email,
-                firstName: dto.firstName,
-                inviterName: `${inviter.firstName} ${inviter.lastName}`,
-                organizationName: inviter.organization.name,
-                inviteToken,
-                role: dto.role,
+            // Mark invitation as completed
+            await tx.userInvitation.update({
+                where: { id: invitation.id },
+                data: { status: InvitationStatus.COMPLETED }
             });
 
-            return {
-                id: user.id,
-                email: user.email,
-                firstName: user.firstName,
-                lastName: user.lastName,
-                role: user.role,
-                inviteToken,
-            };
-        });
-    }
-
-    // Complete user invitation (set password)
-    async completeInvitation(inviteToken: string, password: string) {
-        const user = await this.prisma.user.findUnique({
-            where: { inviteToken }
+            return newUser;
         });
 
-        if (!user) {
-            throw new BadRequestException('Invalid invitation token');
+        // 5. Send welcome email (FIXED - use invitation.organization.name)
+        try {
+            await this.emailService.sendWelcomeEmail({
+                to: result.email,
+                firstName: result.firstName,
+                organizationName: invitation.organization?.name || 'PropFlow'
+            });
+        } catch (emailError) {
+            console.error('Failed to send welcome email:', emailError);
         }
 
-        if (!user.inviteExpires || user.inviteExpires < new Date()) {
-            throw new BadRequestException('Invitation token has expired');
-        }
-
-        const hashedPassword = await bcrypt.hash(password, 10);
-
-        return this.prisma.user.update({
-            where: { id: user.id },
-            data: {
-                passwordHash: hashedPassword,
-                inviteToken: null,
-                inviteExpires: null,
-                status: UserStatus.ACTIVE,
-                emailVerified: true,
-            },
-            select: {
-                id: true,
-                email: true,
-                firstName: true,
-                lastName: true,
-                role: true,
-                organizationId: true,
-            }
-        });
+        return {
+            id: result.id,
+            email: result.email,
+            firstName: result.firstName,
+            lastName: result.lastName,
+            role: result.role,
+            message: 'Account created successfully'
+        };
     }
+
 
     // Get users in organization (UPDATED WITH SECURITY)
     async getUsersInOrganization(
@@ -318,7 +512,7 @@ export class UsersService {
 
             // Format response to match frontend expectations
             const formattedUsers = users.map(user => {
-                const { passwordHash, inviteToken, inviteExpires, userEntities, userProperties, ...userWithoutSensitive } = user;
+                const { passwordHash, inviteToken, inviteExpires, entities, properties, ...userWithoutSensitive } = user;
                 return {
                     ...userWithoutSensitive,
                     entities: user.entities || [],
@@ -505,45 +699,108 @@ export class UsersService {
         });
     }
 
-    // Resend invitation
-    async resendInvitation(userId: string) {
-        const user = await this.prisma.user.findUnique({
-            where: { id: userId },
-            include: { organization: true }
-        });
-
-        if (!user) {
-            throw new NotFoundException('User not found');
-        }
-
-        if (user.status === UserStatus.ACTIVE) {
-            throw new BadRequestException('User has already completed registration');
-        }
-
-        // Generate new invite token
-        const inviteToken = crypto.randomBytes(32).toString('hex');
-        const inviteExpires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-
-        await this.prisma.user.update({
-            where: { id: userId },
-            data: {
-                inviteToken,
-                inviteExpires,
+    /**
+   * Resend invitation email
+   */
+    async resendInvitation(invitationId: string, requesterId: string) {
+        const invitation = await this.prisma.userInvitation.findUnique({
+            where: { id: invitationId },
+            include: {
+                invitedBy: {
+                    select: {
+                        firstName: true,
+                        lastName: true,
+                        organizationId: true
+                    }
+                },
+                organization: {
+                    select: {
+                        name: true
+                    }
+                }
             }
         });
 
-        // Send new invitation email
-        await this.emailService.sendInvitation({
-            to: user.email,
-            firstName: user.firstName,
-            organizationName: user.organization.name,
-            inviteToken,
-            role: user.role,
+        if (!invitation) {
+            throw new NotFoundException('Invitation not found');
+        }
+
+        if (invitation.status !== InvitationStatus.PENDING) {
+            throw new BadRequestException('Can only resend pending invitations');
+        }
+
+        // Verify requester has permission
+        const requester = await this.prisma.user.findUnique({
+            where: { id: requesterId }
         });
 
-        return { success: true };
+        if (requester?.organizationId !== invitation.organizationId) {
+            throw new ForbiddenException('Cannot resend invitations from other organizations');
+        }
+
+        // Generate new token and extend expiry
+        const newToken = this.generateInviteToken();
+        const newExpiresAt = new Date();
+        newExpiresAt.setDate(newExpiresAt.getDate() + 7);
+
+        // Update invitation
+        await this.prisma.userInvitation.update({
+            where: { id: invitationId },
+            data: {
+                token: newToken,
+                expiresAt: newExpiresAt
+            }
+        });
+
+        // Resend email
+        await this.emailService.sendInvitation({
+            to: invitation.email,
+            firstName: invitation.firstName,
+            inviterName: `${invitation.invitedBy.firstName} ${invitation.invitedBy.lastName}`,
+            organizationName: invitation.organization.name,
+            inviteToken: newToken,
+            role: invitation.role
+        });
+
+        return { message: 'Invitation resent successfully' };
     }
 
+    /**
+   * Get pending invitations for organization
+   */
+    async getOrganizationInvitations(organizationId: string) {
+        return this.prisma.userInvitation.findMany({
+            where: {
+                organizationId,
+                status: InvitationStatus.PENDING,
+                expiresAt: { gt: new Date() }
+            },
+            select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                role: true,
+                status: true,
+                createdAt: true,
+                expiresAt: true,
+                invitedBy: {
+                    select: {
+                        firstName: true,
+                        lastName: true
+                    }
+                }
+            },
+            orderBy: {
+                createdAt: 'desc'
+            }
+        });
+    }
+
+    // Private helper methods
+    private generateInviteToken(): string {
+        return randomBytes(32).toString('hex');
+    }
     // Deactivate user
     async deactivateUser(userId: string) {
         return this.prisma.user.update({
@@ -953,78 +1210,57 @@ export class UsersService {
 
     private async validateEntityAccess(
         entityIds: string[],
-        currentUserRole: UserRole,
-        currentUserOrgId: string,
-        currentUserEntityIds: string[]
+        inviterRole: UserRole,
+        organizationId: string,
+        inviterEntityIds: string[]
     ) {
-        // Verify all entities exist and belong to the same organization
+        // For ENTITY_MANAGER, verify they can only assign entities they have access to
+        if (inviterRole === UserRole.ENTITY_MANAGER) {
+            const unauthorizedEntities = entityIds.filter(id => !inviterEntityIds.includes(id));
+            if (unauthorizedEntities.length > 0) {
+                throw new ForbiddenException('Cannot assign entities you do not have access to');
+            }
+        }
+
+        // Verify all entities exist and belong to the organization
         const entities = await this.prisma.entity.findMany({
             where: {
-                id: {
-                    in: entityIds
-                }
-            },
-            select: {
-                id: true,
-                organizationId: true
+                id: { in: entityIds },
+                organizationId
             }
         });
 
         if (entities.length !== entityIds.length) {
-            throw new BadRequestException('One or more entities not found');
-        }
-
-        // Verify all entities belong to the current user's organization
-        const invalidEntities = entities.filter(entity => entity.organizationId !== currentUserOrgId);
-        if (invalidEntities.length > 0) {
-            throw new ForbiddenException('Cannot assign entities from other organizations');
-        }
-
-        // For ENTITY_MANAGER, verify they can only assign entities they have access to
-        if (currentUserRole === UserRole.ENTITY_MANAGER) {
-            const unauthorizedEntities = entityIds.filter(id => !currentUserEntityIds.includes(id));
-            if (unauthorizedEntities.length > 0) {
-                throw new ForbiddenException('Cannot assign entities you do not have access to');
-            }
+            throw new BadRequestException('One or more entities not found or not accessible');
         }
     }
 
     private async validatePropertyAccess(
         propertyIds: string[],
-        currentUserRole: UserRole,
-        currentUserOrgId: string,
-        currentUserEntityIds: string[]
+        inviterRole: UserRole,
+        organizationId: string,
+        inviterEntityIds: string[]
     ) {
-        // Verify all properties exist and belong to entities in the same organization
+        // Verify all properties exist and belong to entities in the organization
         const properties = await this.prisma.property.findMany({
             where: {
-                id: {
-                    in: propertyIds
-                }
+                id: { in: propertyIds },
+                entity: { organizationId }
             },
             include: {
-                entity: {
-                    select: {
-                        id: true,
-                        organizationId: true
-                    }
-                }
+                entity: { select: { id: true } }
             }
         });
 
         if (properties.length !== propertyIds.length) {
-            throw new BadRequestException('One or more properties not found');
-        }
-
-        // Verify all properties belong to entities in the current user's organization
-        const invalidProperties = properties.filter(property => property.entity.organizationId !== currentUserOrgId);
-        if (invalidProperties.length > 0) {
-            throw new ForbiddenException('Cannot assign properties from other organizations');
+            throw new BadRequestException('One or more properties not found or not accessible');
         }
 
         // For ENTITY_MANAGER, verify they can only assign properties from entities they have access to
-        if (currentUserRole === UserRole.ENTITY_MANAGER) {
-            const unauthorizedProperties = properties.filter(property => !currentUserEntityIds.includes(property.entityId));
+        if (inviterRole === UserRole.ENTITY_MANAGER) {
+            const unauthorizedProperties = properties.filter(
+                property => !inviterEntityIds.includes(property.entity.id)
+            );
             if (unauthorizedProperties.length > 0) {
                 throw new ForbiddenException('Cannot assign properties from entities you do not have access to');
             }
@@ -1065,5 +1301,101 @@ export class UsersService {
         });
 
         return user;
+    }
+
+    private async validateInvitePermissions(targetRole: UserRole, inviterRole: UserRole) {
+        const roleHierarchy = {
+            [UserRole.SUPER_ADMIN]: [
+                UserRole.ORG_ADMIN,
+                UserRole.ENTITY_MANAGER,
+                UserRole.PROPERTY_MANAGER,
+                UserRole.ACCOUNTANT,
+                UserRole.MAINTENANCE,
+                UserRole.TENANT
+            ],
+            [UserRole.ORG_ADMIN]: [
+                UserRole.ENTITY_MANAGER,
+                UserRole.PROPERTY_MANAGER,
+                UserRole.ACCOUNTANT,
+                UserRole.MAINTENANCE,
+                UserRole.TENANT
+            ],
+            [UserRole.ENTITY_MANAGER]: [
+                UserRole.PROPERTY_MANAGER,
+                UserRole.ACCOUNTANT,
+                UserRole.MAINTENANCE,
+                UserRole.TENANT
+            ]
+        };
+
+        const allowedRoles = roleHierarchy[inviterRole] || [];
+
+        if (!allowedRoles.includes(targetRole)) {
+            throw new ForbiddenException('Insufficient permissions to invite users with this role');
+        }
+    }
+
+    /**
+ * Cancel invitation
+ */
+    async cancelInvitation(invitationId: string, requesterId: string) {
+        const invitation = await this.prisma.userInvitation.findUnique({
+            where: { id: invitationId },
+            include: {
+                invitedBy: {
+                    select: {
+                        organizationId: true
+                    }
+                }
+            }
+        });
+
+        if (!invitation) {
+            throw new NotFoundException('Invitation not found');
+        }
+
+        if (invitation.status !== InvitationStatus.PENDING) {
+            throw new BadRequestException('Can only cancel pending invitations');
+        }
+
+        // Verify requester has permission
+        const requester = await this.prisma.user.findUnique({
+            where: { id: requesterId }
+        });
+
+        if (requester?.organizationId !== invitation.invitedBy.organizationId) {
+            throw new ForbiddenException('Cannot cancel invitations from other organizations');
+        }
+
+        // Update invitation status
+        await this.prisma.userInvitation.update({
+            where: { id: invitationId },
+            data: {
+                status: InvitationStatus.CANCELLED,
+                updatedAt: new Date()
+            }
+        });
+
+        return { message: 'Invitation cancelled successfully' };
+    }
+
+    /**
+     * Clean up expired invitations (can be called by a cron job)
+     */
+    async cleanupExpiredInvitations() {
+        const expiredInvitations = await this.prisma.userInvitation.updateMany({
+            where: {
+                status: InvitationStatus.PENDING,
+                expiresAt: { lt: new Date() }
+            },
+            data: {
+                status: InvitationStatus.EXPIRED,
+                updatedAt: new Date()
+            }
+        });
+
+        return {
+            message: `Marked ${expiredInvitations.count} invitations as expired`
+        };
     }
 }

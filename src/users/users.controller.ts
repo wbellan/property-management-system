@@ -1,5 +1,5 @@
 // src/users/users.controller.ts
-import { Controller, Post, Get, Put, Body, Param, Query, UseGuards, Patch, Delete } from '@nestjs/common';
+import { Controller, Post, Get, Put, Body, Param, Query, UseGuards, Patch, Delete, HttpCode, HttpStatus, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -10,6 +10,8 @@ import { UserRole } from '@prisma/client';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserAccessDto } from './dto/update-user-access.dto';
+import { InviteUserDto } from './dto/invite-user.dto';
+import { CompleteInvitationDto } from './dto/complete-invitation.dto';
 
 @ApiTags('Users')
 @Controller('users')
@@ -24,18 +26,145 @@ export class UsersController {
         return this.usersService.setupOrganization(dto);
     }
 
+    /**
+       * Send user invitation
+       */
     @Post('invite')
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(UserRole.ORG_ADMIN, UserRole.ENTITY_MANAGER)
-    @ApiOperation({ summary: 'Invite a new user' })
-    async inviteUser(@CurrentUser() currentUser: any, @Body() dto: any) {
-        return this.usersService.inviteUser(currentUser.id, dto);
+    @Roles(UserRole.SUPER_ADMIN, UserRole.ORG_ADMIN, UserRole.ENTITY_MANAGER)
+    @ApiOperation({ summary: 'Invite a new user to join the organization' })
+    @ApiResponse({
+        status: 201,
+        description: 'Invitation sent successfully'
+    })
+    @ApiResponse({ status: 400, description: 'Bad request - validation errors' })
+    @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+    @ApiBearerAuth('JWT-auth')
+    async inviteUser(
+        @Body() inviteData: InviteUserDto,
+        @CurrentUser() currentUser: any // Get the full user object
+    ) {
+        console.log('Controller - Current user:', currentUser);
+        console.log('Controller - Invite data:', inviteData);
+
+        // Extract user information with validation
+        // const inviterId = currentUser?.id || currentUser?.sub;
+        const inviterId = currentUser.userId;
+        const organizationId = currentUser?.organizationId;
+        const inviterRole = currentUser?.role;
+        const inviterEntities = currentUser?.entities || [];
+
+        console.log('Controller - Extracted values:', {
+            inviterId,
+            organizationId,
+            inviterRole,
+            entitiesCount: inviterEntities.length
+        });
+
+        // Validate required fields
+        if (!inviterId) {
+            throw new BadRequestException('User ID not found in token');
+        }
+
+        if (!organizationId) {
+            throw new BadRequestException('Organization ID not found in token');
+        }
+
+        if (!inviterRole) {
+            throw new BadRequestException('User role not found in token');
+        }
+
+        const entityIds = inviterEntities.map(e => e.id || e);
+
+        const result = await this.usersService.inviteUser(
+            inviteData,
+            inviterId,
+            organizationId,
+            inviterRole,
+            entityIds
+        );
+
+        return {
+            success: true,
+            data: result,
+            message: 'Invitation sent successfully'
+        };
     }
 
+    /**
+  * Validate invitation token (public endpoint)
+  */
+    @Get('validate-invitation/:token')
+    @ApiOperation({ summary: 'Validate invitation token' })
+    @ApiResponse({
+        status: 200,
+        description: 'Invitation is valid',
+        schema: {
+            type: 'object',
+            properties: {
+                success: { type: 'boolean', example: true },
+                data: {
+                    type: 'object',
+                    properties: {
+                        id: { type: 'string' },
+                        firstName: { type: 'string' },
+                        lastName: { type: 'string' },
+                        email: { type: 'string' },
+                        role: { type: 'string' },
+                        organizationName: { type: 'string' },
+                        expiresAt: { type: 'string', format: 'date-time' }
+                    }
+                }
+            }
+        }
+    })
+    @ApiResponse({ status: 400, description: 'Invalid or expired token' })
+    @ApiResponse({ status: 404, description: 'Invitation not found' })
+    async validateInvitation(@Param('token') token: string) {
+        const result = await this.usersService.validateInvitation(token);
+
+        return {
+            success: true,
+            data: result
+        };
+    }
+
+    /**
+       * Complete invitation by creating user account (public endpoint)
+       */
     @Post('complete-invitation')
-    @ApiOperation({ summary: 'Complete user invitation by setting password' })
-    async completeInvitation(@Body() body: { inviteToken: string; password: string }) {
-        return this.usersService.completeInvitation(body.inviteToken, body.password);
+    @HttpCode(HttpStatus.CREATED)
+    @ApiOperation({ summary: 'Complete invitation and create user account' })
+    @ApiResponse({
+        status: 201,
+        description: 'User account created successfully',
+        schema: {
+            type: 'object',
+            properties: {
+                success: { type: 'boolean', example: true },
+                data: {
+                    type: 'object',
+                    properties: {
+                        id: { type: 'string' },
+                        email: { type: 'string' },
+                        firstName: { type: 'string' },
+                        lastName: { type: 'string' },
+                        role: { type: 'string' },
+                        message: { type: 'string' }
+                    }
+                }
+            }
+        }
+    })
+    @ApiResponse({ status: 400, description: 'Invalid token or validation errors' })
+    @ApiResponse({ status: 404, description: 'Invitation not found' })
+    async completeInvitation(@Body() completeData: CompleteInvitationDto) {
+        const result = await this.usersService.completeInvitation(completeData);
+
+        return {
+            success: true,
+            data: result
+        };
     }
 
     @Get('organization/:organizationId')
@@ -70,12 +199,40 @@ export class UsersController {
     //     return this.usersService.updateUserAccess(userId, updates);
     // }
 
-    @Post(':userId/resend-invitation')
+    /**
+       * Resend invitation
+       */
+    @Post(':id/resend-invitation')
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(UserRole.ORG_ADMIN, UserRole.ENTITY_MANAGER)
-    async resendInvitation(@Param('userId') userId: string) {
-        return this.usersService.resendInvitation(userId);
+    @Roles(UserRole.SUPER_ADMIN, UserRole.ORG_ADMIN, UserRole.ENTITY_MANAGER)
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Resend invitation email' })
+    @ApiResponse({
+        status: 200,
+        description: 'Invitation resent successfully',
+        schema: {
+            type: 'object',
+            properties: {
+                success: { type: 'boolean', example: true },
+                message: { type: 'string', example: 'Invitation resent successfully' }
+            }
+        }
+    })
+    @ApiResponse({ status: 404, description: 'Invitation not found' })
+    @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+    @ApiBearerAuth('JWT-auth')
+    async resendInvitation(
+        @Param('id') invitationId: string,
+        @CurrentUser('id') requesterId: string
+    ) {
+        const result = await this.usersService.resendInvitation(invitationId, requesterId);
+
+        return {
+            success: true,
+            message: result.message
+        };
     }
+
 
     @Put(':userId/deactivate')
     @UseGuards(JwtAuthGuard, RolesGuard)
@@ -219,6 +376,97 @@ export class UsersController {
         return {
             success: true,
             data: result
+        };
+    }
+
+    /**
+  * Get organization invitations
+  */
+    @Get('organization/:organizationId/invitations')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.SUPER_ADMIN, UserRole.ORG_ADMIN, UserRole.ENTITY_MANAGER)
+    @ApiOperation({ summary: 'Get pending invitations for organization' })
+    @ApiResponse({
+        status: 200,
+        description: 'Invitations retrieved successfully',
+        schema: {
+            type: 'object',
+            properties: {
+                success: { type: 'boolean', example: true },
+                data: {
+                    type: 'array',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            id: { type: 'string' },
+                            firstName: { type: 'string' },
+                            lastName: { type: 'string' },
+                            email: { type: 'string' },
+                            role: { type: 'string' },
+                            status: { type: 'string' },
+                            createdAt: { type: 'string', format: 'date-time' },
+                            expiresAt: { type: 'string', format: 'date-time' },
+                            invitedBy: {
+                                type: 'object',
+                                properties: {
+                                    firstName: { type: 'string' },
+                                    lastName: { type: 'string' }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    })
+    @ApiBearerAuth('JWT-auth')
+    async getOrganizationInvitations(
+        @Param('organizationId') organizationId: string,
+        @CurrentUser('organizationId') userOrgId: string,
+        @CurrentUser('role') userRole: UserRole
+    ) {
+        // Verify access to organization
+        if (userRole !== UserRole.SUPER_ADMIN && organizationId !== userOrgId) {
+            throw new ForbiddenException('Cannot access invitations from other organizations');
+        }
+
+        const result = await this.usersService.getOrganizationInvitations(organizationId);
+
+        return {
+            success: true,
+            data: result
+        };
+    }
+
+    /**
+  * Cancel invitation
+  */
+    @Post('invitations/:id/cancel')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.SUPER_ADMIN, UserRole.ORG_ADMIN, UserRole.ENTITY_MANAGER)
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Cancel pending invitation' })
+    @ApiResponse({
+        status: 200,
+        description: 'Invitation cancelled successfully',
+        schema: {
+            type: 'object',
+            properties: {
+                success: { type: 'boolean', example: true },
+                message: { type: 'string', example: 'Invitation cancelled successfully' }
+            }
+        }
+    })
+    @ApiBearerAuth('JWT-auth')
+    async cancelInvitation(
+        @Param('id') invitationId: string,
+        @CurrentUser('id') requesterId: string
+    ) {
+        const result = await this.usersService.cancelInvitation(invitationId, requesterId);
+
+        return {
+            success: true,
+            message: result.message
         };
     }
 }
