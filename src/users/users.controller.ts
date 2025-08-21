@@ -9,6 +9,7 @@ import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { UserRole } from '@prisma/client';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserAccessDto } from './dto/update-user-access.dto';
 
 @ApiTags('Users')
 @Controller('users')
@@ -59,15 +60,15 @@ export class UsersController {
         );
     }
 
-    @Put(':userId/access')
-    @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(UserRole.ORG_ADMIN)
-    async updateUserAccess(
-        @Param('userId') userId: string,
-        @Body() updates: any
-    ) {
-        return this.usersService.updateUserAccess(userId, updates);
-    }
+    // @Put(':userId/access')
+    // @UseGuards(JwtAuthGuard, RolesGuard)
+    // @Roles(UserRole.ORG_ADMIN)
+    // async updateUserAccess(
+    //     @Param('userId') userId: string,
+    //     @Body() updates: any
+    // ) {
+    //     return this.usersService.updateUserAccess(userId, updates);
+    // }
 
     @Post(':userId/resend-invitation')
     @UseGuards(JwtAuthGuard, RolesGuard)
@@ -139,5 +140,85 @@ export class UsersController {
     @ApiResponse({ status: 404, description: 'User not found' })
     async remove(@Param('id') id: string) {
         return this.usersService.remove(id);
+    }
+
+    @Patch(':id/access')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.SUPER_ADMIN, UserRole.ORG_ADMIN, UserRole.ENTITY_MANAGER)
+    @ApiBearerAuth('JWT-auth')
+    @ApiOperation({ summary: 'Update user access and permissions' })
+    @ApiResponse({ status: 200, description: 'User access updated successfully' })
+    @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+    @ApiResponse({ status: 404, description: 'User not found' })
+    async updateUserAccess(
+        @Param('id') userId: string,
+        @Body() updateAccessDto: UpdateUserAccessDto,
+        @CurrentUser('role') currentUserRole: UserRole,
+        @CurrentUser('organizationId') currentUserOrgId: string,
+        @CurrentUser('entities') currentUserEntities: any[],
+    ) {
+        const result = await this.usersService.updateUserAccess(
+            userId,
+            updateAccessDto,
+            currentUserRole,
+            currentUserOrgId,
+            currentUserEntities.map(e => e.id)
+        );
+
+        return {
+            success: true,
+            data: result,
+            message: 'User access updated successfully'
+        };
+    }
+
+    @Get(':id/access')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.SUPER_ADMIN, UserRole.ORG_ADMIN, UserRole.ENTITY_MANAGER)
+    @ApiBearerAuth('JWT-auth')
+    @ApiOperation({ summary: 'Get user access details' })
+    @ApiResponse({ status: 200, description: 'User access details retrieved' })
+    async getUserAccess(
+        @Param('id') userId: string,
+        @CurrentUser('role') currentUserRole: UserRole,
+        @CurrentUser('organizationId') currentUserOrgId: string,
+        @CurrentUser('entities') currentUserEntities: any[],
+    ) {
+        const result = await this.usersService.getUserAccess(
+            userId,
+            currentUserRole,
+            currentUserOrgId,
+            currentUserEntities.map(e => e.id)
+        );
+
+        return {
+            success: true,
+            data: result
+        };
+    }
+
+    @Get('organization/:organizationId/entities-properties')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.SUPER_ADMIN, UserRole.ORG_ADMIN, UserRole.ENTITY_MANAGER)
+    @ApiBearerAuth('JWT-auth')
+    @ApiOperation({ summary: 'Get entities and properties for user access management' })
+    @ApiResponse({ status: 200, description: 'Entities and properties retrieved' })
+    async getEntitiesAndProperties(
+        @Param('organizationId') organizationId: string,
+        @CurrentUser('role') currentUserRole: UserRole,
+        @CurrentUser('organizationId') currentUserOrgId: string,
+        @CurrentUser('entities') currentUserEntities: any[],
+    ) {
+        const result = await this.usersService.getEntitiesAndProperties(
+            organizationId,
+            currentUserRole,
+            currentUserOrgId,
+            currentUserEntities.map(e => e.id)
+        );
+
+        return {
+            success: true,
+            data: result
+        };
     }
 }

@@ -7,6 +7,7 @@ import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateUserAccessDto } from './dto/update-user-access.dto';
 
 export interface InviteUserDto {
     email: string;
@@ -350,56 +351,119 @@ export class UsersService {
     // Update user role and access
     async updateUserAccess(
         userId: string,
-        updates: {
-            role?: UserRole;
-            status?: UserStatus;
-            entityIds?: string[];
-            propertyIds?: string[];
-        }
+        updateAccessDto: UpdateUserAccessDto,
+        currentUserRole: UserRole,
+        currentUserOrgId: string,
+        currentUserEntityIds: string[]
     ) {
-        return this.prisma.$transaction(async (tx) => {
+        // First, get the user to update and verify permissions
+        const userToUpdate = await this.prisma.user.findUnique({
+            where: { id: userId },
+            include: {
+                organization: true,
+                entities: true,
+                properties: true
+            }
+        });
+
+        if (!userToUpdate) {
+            throw new NotFoundException('User not found');
+        }
+
+        // Verify organization access
+        if (currentUserRole !== UserRole.SUPER_ADMIN && userToUpdate.organizationId !== currentUserOrgId) {
+            throw new ForbiddenException('Cannot modify users from other organizations');
+        }
+
+        // Verify role hierarchy permissions
+        this.validateRoleChangePermissions(currentUserRole, userToUpdate.role, updateAccessDto.role);
+
+        // Verify entity access permissions
+        if (updateAccessDto.entityIds?.length > 0) {
+            await this.validateEntityAccess(updateAccessDto.entityIds, currentUserRole, currentUserOrgId, currentUserEntityIds);
+        }
+
+        // Verify property access permissions
+        if (updateAccessDto.propertyIds?.length > 0) {
+            await this.validatePropertyAccess(updateAccessDto.propertyIds, currentUserRole, currentUserOrgId, currentUserEntityIds);
+        }
+
+        // Update user in transaction
+        return await this.prisma.$transaction(async (tx) => {
             // Update basic user info
-            const user = await tx.user.update({
+            const updatedUser = await tx.user.update({
                 where: { id: userId },
                 data: {
-                    role: updates.role,
-                    status: updates.status,
+                    role: updateAccessDto.role,
+                    status: updateAccessDto.status,
                 }
             });
 
-            // Update entity access
-            if (updates.entityIds !== undefined) {
-                await tx.userEntity.deleteMany({
-                    where: { userId }
-                });
-
-                if (updates.entityIds.length > 0) {
-                    await tx.userEntity.createMany({
-                        data: updates.entityIds.map(entityId => ({
-                            userId,
-                            entityId,
-                        }))
-                    });
+            // Clear existing entity relationships
+            await tx.user.update({
+                where: { id: userId },
+                data: {
+                    entities: {
+                        set: [] // Clear all existing relationships
+                    }
                 }
+            });
+
+            // Clear existing property relationships
+            await tx.user.update({
+                where: { id: userId },
+                data: {
+                    properties: {
+                        set: [] // Clear all existing relationships
+                    }
+                }
+            });
+
+            // Add new entity relationships
+            if (updateAccessDto.entityIds?.length > 0) {
+                await tx.user.update({
+                    where: { id: userId },
+                    data: {
+                        entities: {
+                            connect: updateAccessDto.entityIds.map(id => ({ id }))
+                        }
+                    }
+                });
             }
 
-            // Update property access
-            if (updates.propertyIds !== undefined) {
-                await tx.userProperty.deleteMany({
-                    where: { userId }
+            // Add new property relationships
+            if (updateAccessDto.propertyIds?.length > 0) {
+                await tx.user.update({
+                    where: { id: userId },
+                    data: {
+                        properties: {
+                            connect: updateAccessDto.propertyIds.map(id => ({ id }))
+                        }
+                    }
                 });
-
-                if (updates.propertyIds.length > 0) {
-                    await tx.userProperty.createMany({
-                        data: updates.propertyIds.map(propertyId => ({
-                            userId,
-                            propertyId,
-                        }))
-                    });
-                }
             }
 
-            return user;
+            // Return updated user with relationships
+            return await tx.user.findUnique({
+                where: { id: userId },
+                include: {
+                    entities: {
+                        select: {
+                            id: true,
+                            name: true,
+                            entityType: true
+                        }
+                    },
+                    properties: {
+                        select: {
+                            id: true,
+                            name: true,
+                            address: true,
+                            entityId: true
+                        }
+                    }
+                }
+            });
         });
     }
 
@@ -693,5 +757,239 @@ export class UsersService {
                 message: 'User deleted successfully'
             };
         });
+    }
+    async getUserAccess(
+        userId: string,
+        currentUserRole: UserRole,
+        currentUserOrgId: string,
+        currentUserEntityIds: string[]
+    ) {
+        const user = await this.prisma.user.findUnique({
+            where: { id: userId },
+            include: {
+                entities: {
+                    select: {
+                        id: true,
+                        name: true,
+                        entityType: true
+                    }
+                },
+                properties: {
+                    select: {
+                        id: true,
+                        name: true,
+                        address: true,
+                        entityId: true
+                    }
+                }
+            }
+        });
+
+        if (!user) {
+            throw new NotFoundException('User not found');
+        }
+
+        // Verify access permissions
+        if (currentUserRole !== UserRole.SUPER_ADMIN && user.organizationId !== currentUserOrgId) {
+            throw new ForbiddenException('Cannot access users from other organizations');
+        }
+
+        return user;
+    }
+
+    async getEntitiesAndProperties(
+        organizationId: string,
+        currentUserRole: UserRole,
+        currentUserOrgId: string,
+        currentUserEntityIds: string[]
+    ) {
+        // Verify organization access
+        if (currentUserRole !== UserRole.SUPER_ADMIN && organizationId !== currentUserOrgId) {
+            throw new ForbiddenException('Cannot access other organizations');
+        }
+
+        let entityFilter = {};
+        let propertyFilter = {};
+
+        // Apply entity-level filtering for ENTITY_MANAGER role
+        if (currentUserRole === UserRole.ENTITY_MANAGER) {
+            entityFilter = {
+                id: {
+                    in: currentUserEntityIds
+                }
+            };
+            propertyFilter = {
+                entityId: {
+                    in: currentUserEntityIds
+                }
+            };
+        } else {
+            // For ORG_ADMIN and SUPER_ADMIN, show all entities/properties in the organization
+            entityFilter = {
+                organizationId: organizationId
+            };
+            propertyFilter = {
+                entity: {
+                    organizationId: organizationId
+                }
+            };
+        }
+
+        const [entities, properties] = await Promise.all([
+            this.prisma.entity.findMany({
+                where: entityFilter,
+                select: {
+                    id: true,
+                    name: true,
+                    entityType: true
+                },
+                orderBy: {
+                    name: 'asc'
+                }
+            }),
+            this.prisma.property.findMany({
+                where: propertyFilter,
+                select: {
+                    id: true,
+                    name: true,
+                    address: true,
+                    entityId: true
+                },
+                orderBy: {
+                    name: 'asc'
+                }
+            })
+        ]);
+
+        return {
+            entities,
+            properties
+        };
+    }
+
+    private validateRoleChangePermissions(
+        currentUserRole: UserRole,
+        targetCurrentRole: UserRole,
+        targetNewRole: UserRole
+    ) {
+        // Define role hierarchy and permissions
+        const roleHierarchy = {
+            [UserRole.SUPER_ADMIN]: [
+                UserRole.ORG_ADMIN,
+                UserRole.ENTITY_MANAGER,
+                UserRole.PROPERTY_MANAGER,
+                UserRole.ACCOUNTANT,
+                UserRole.MAINTENANCE,
+                UserRole.TENANT
+            ],
+            [UserRole.ORG_ADMIN]: [
+                UserRole.ENTITY_MANAGER,
+                UserRole.PROPERTY_MANAGER,
+                UserRole.ACCOUNTANT,
+                UserRole.MAINTENANCE,
+                UserRole.TENANT
+            ],
+            [UserRole.ENTITY_MANAGER]: [
+                UserRole.PROPERTY_MANAGER,
+                UserRole.ACCOUNTANT,
+                UserRole.MAINTENANCE,
+                UserRole.TENANT
+            ],
+            [UserRole.PROPERTY_MANAGER]: [
+                UserRole.TENANT
+            ]
+        };
+
+        const allowedRoles = roleHierarchy[currentUserRole] || [];
+
+        // Check if current user can modify the target user's current role
+        if (currentUserRole !== UserRole.SUPER_ADMIN && !allowedRoles.includes(targetCurrentRole)) {
+            throw new ForbiddenException('Insufficient permissions to modify this user');
+        }
+
+        // Check if current user can assign the new role
+        if (currentUserRole !== UserRole.SUPER_ADMIN && !allowedRoles.includes(targetNewRole)) {
+            throw new ForbiddenException('Insufficient permissions to assign this role');
+        }
+    }
+
+    private async validateEntityAccess(
+        entityIds: string[],
+        currentUserRole: UserRole,
+        currentUserOrgId: string,
+        currentUserEntityIds: string[]
+    ) {
+        // Verify all entities exist and belong to the same organization
+        const entities = await this.prisma.entity.findMany({
+            where: {
+                id: {
+                    in: entityIds
+                }
+            },
+            select: {
+                id: true,
+                organizationId: true
+            }
+        });
+
+        if (entities.length !== entityIds.length) {
+            throw new BadRequestException('One or more entities not found');
+        }
+
+        // Verify all entities belong to the current user's organization
+        const invalidEntities = entities.filter(entity => entity.organizationId !== currentUserOrgId);
+        if (invalidEntities.length > 0) {
+            throw new ForbiddenException('Cannot assign entities from other organizations');
+        }
+
+        // For ENTITY_MANAGER, verify they can only assign entities they have access to
+        if (currentUserRole === UserRole.ENTITY_MANAGER) {
+            const unauthorizedEntities = entityIds.filter(id => !currentUserEntityIds.includes(id));
+            if (unauthorizedEntities.length > 0) {
+                throw new ForbiddenException('Cannot assign entities you do not have access to');
+            }
+        }
+    }
+
+    private async validatePropertyAccess(
+        propertyIds: string[],
+        currentUserRole: UserRole,
+        currentUserOrgId: string,
+        currentUserEntityIds: string[]
+    ) {
+        // Verify all properties exist and belong to entities in the same organization
+        const properties = await this.prisma.property.findMany({
+            where: {
+                id: {
+                    in: propertyIds
+                }
+            },
+            include: {
+                entity: {
+                    select: {
+                        id: true,
+                        organizationId: true
+                    }
+                }
+            }
+        });
+
+        if (properties.length !== propertyIds.length) {
+            throw new BadRequestException('One or more properties not found');
+        }
+
+        // Verify all properties belong to entities in the current user's organization
+        const invalidProperties = properties.filter(property => property.entity.organizationId !== currentUserOrgId);
+        if (invalidProperties.length > 0) {
+            throw new ForbiddenException('Cannot assign properties from other organizations');
+        }
+
+        // For ENTITY_MANAGER, verify they can only assign properties from entities they have access to
+        if (currentUserRole === UserRole.ENTITY_MANAGER) {
+            const unauthorizedProperties = properties.filter(property => !currentUserEntityIds.includes(property.entityId));
+            if (unauthorizedProperties.length > 0) {
+                throw new ForbiddenException('Cannot assign properties from entities you do not have access to');
+            }
+        }
     }
 }

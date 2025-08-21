@@ -46,6 +46,7 @@ model Entity {
   updatedAt DateTime @updatedAt
 
   // Relationships
+  users User[] @relation("UserEntities")
   organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   properties     Property[]
   bankLedgers    BankLedger[]
@@ -75,6 +76,7 @@ model Property {
   updatedAt DateTime @updatedAt
 
   // Relationships
+  users User[] @relation("UserProperties")
   entity            Entity             @relation(fields: [entityId], references: [id], onDelete: Cascade)
   spaces            Space[]
   maintenanceReqs   MaintenanceRequest[]
@@ -153,6 +155,8 @@ model User {
   maintenanceReqs  MaintenanceRequest[]
   ledgerEntries    LedgerEntry[]
   tenantProfile    Tenant?
+  entities         Entity[]   @relation("UserEntities") 
+  properties       Property[] @relation("UserProperties")
 
   @@map("users")
 }
