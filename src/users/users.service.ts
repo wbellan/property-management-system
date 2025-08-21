@@ -271,6 +271,9 @@ export class UsersService {
         userRole?: UserRole,
         currentUserOrgId?: string
     ) {
+
+        console.log('In getUsersInOrganization', organizationId);
+
         // Security check: ensure user can only access their own organization's users
         if (userRole !== UserRole.SUPER_ADMIN && organizationId !== currentUserOrgId) {
             throw new ForbiddenException('Access denied to this organization');
@@ -283,26 +286,18 @@ export class UsersService {
                 this.prisma.user.findMany({
                     where: { organizationId },
                     include: {
-                        userEntities: {
-                            include: {
-                                entity: {
-                                    select: {
-                                        id: true,
-                                        name: true,
-                                        entityType: true,
-                                    }
-                                }
+                        entities: {
+                            select: {
+                                id: true,
+                                name: true,
+                                entityType: true,
                             }
                         },
-                        userProperties: {
-                            include: {
-                                property: {
-                                    select: {
-                                        id: true,
-                                        name: true,
-                                        address: true,
-                                    }
-                                }
+                        properties: {
+                            select: {
+                                id: true,
+                                name: true,
+                                address: true,
                             }
                         },
                         tenantProfile: {
@@ -326,11 +321,13 @@ export class UsersService {
                 const { passwordHash, inviteToken, inviteExpires, userEntities, userProperties, ...userWithoutSensitive } = user;
                 return {
                     ...userWithoutSensitive,
-                    entities: userEntities ? userEntities.map(ue => ue.entity) : [],
-                    properties: userProperties ? userProperties.map(up => up.property) : [],
+                    entities: user.entities || [],
+                    properties: user.properties || [],
                     isPendingInvite: !!inviteToken, // Use the destructured inviteToken
                 };
             });
+
+            console.log('formattedUsers', formattedUsers);
 
             return {
                 success: true,
@@ -388,9 +385,15 @@ export class UsersService {
             await this.validatePropertyAccess(updateAccessDto.propertyIds, currentUserRole, currentUserOrgId, currentUserEntityIds);
         }
 
-        // Update user in transaction
+        // Update user in transaction - FIXED VERSION
         return await this.prisma.$transaction(async (tx) => {
-            // Update basic user info
+            console.log('Updating user access for:', userId);
+            console.log('New role:', updateAccessDto.role);
+            console.log('New status:', updateAccessDto.status);
+            console.log('Entity IDs:', updateAccessDto.entityIds);
+            console.log('Property IDs:', updateAccessDto.propertyIds);
+
+            // 1. Update basic user info first
             const updatedUser = await tx.user.update({
                 where: { id: userId },
                 data: {
@@ -399,28 +402,19 @@ export class UsersService {
                 }
             });
 
-            // Clear existing entity relationships
+            // 2. Update entity relationships using disconnect/connect pattern
+            // First disconnect all existing entities
             await tx.user.update({
                 where: { id: userId },
                 data: {
                     entities: {
-                        set: [] // Clear all existing relationships
+                        set: [] // This clears all existing relationships
                     }
                 }
             });
 
-            // Clear existing property relationships
-            await tx.user.update({
-                where: { id: userId },
-                data: {
-                    properties: {
-                        set: [] // Clear all existing relationships
-                    }
-                }
-            });
-
-            // Add new entity relationships
-            if (updateAccessDto.entityIds?.length > 0) {
+            // Then connect new entities if provided
+            if (updateAccessDto.entityIds && updateAccessDto.entityIds.length > 0) {
                 await tx.user.update({
                     where: { id: userId },
                     data: {
@@ -429,10 +423,22 @@ export class UsersService {
                         }
                     }
                 });
+                console.log('Connected entities:', updateAccessDto.entityIds);
             }
 
-            // Add new property relationships
-            if (updateAccessDto.propertyIds?.length > 0) {
+            // 3. Update property relationships using disconnect/connect pattern
+            // First disconnect all existing properties
+            await tx.user.update({
+                where: { id: userId },
+                data: {
+                    properties: {
+                        set: [] // This clears all existing relationships
+                    }
+                }
+            });
+
+            // Then connect new properties if provided
+            if (updateAccessDto.propertyIds && updateAccessDto.propertyIds.length > 0) {
                 await tx.user.update({
                     where: { id: userId },
                     data: {
@@ -441,10 +447,32 @@ export class UsersService {
                         }
                     }
                 });
+                console.log('Connected properties:', updateAccessDto.propertyIds);
             }
 
-            // Return updated user with relationships
-            return await tx.user.findUnique({
+            // // 4. Create audit log entry
+            // try {
+            //     await tx.userAccessAudit.create({
+            //         data: {
+            //             userId: userId,
+            //             changedById: currentUserOrgId, // You might want to pass the actual current user ID
+            //             changeType: 'ACCESS_UPDATE',
+            //             oldRole: userToUpdate.role,
+            //             newRole: updateAccessDto.role,
+            //             oldStatus: userToUpdate.status,
+            //             newStatus: updateAccessDto.status,
+            //             entityIds: updateAccessDto.entityIds || [],
+            //             propertyIds: updateAccessDto.propertyIds || [],
+            //             timestamp: new Date(),
+            //         }
+            //     });
+            // } catch (auditError) {
+            //     console.log('Audit log creation failed (non-critical):', auditError.message);
+            //     // Don't fail the transaction if audit logging fails
+            // }
+
+            // 4. Return updated user with all relationships
+            const finalUser = await tx.user.findUnique({
                 where: { id: userId },
                 include: {
                     entities: {
@@ -464,6 +492,16 @@ export class UsersService {
                     }
                 }
             });
+
+            console.log('Final user with relationships:', {
+                id: finalUser.id,
+                role: finalUser.role,
+                status: finalUser.status,
+                entities: finalUser.entities,
+                properties: finalUser.properties
+            });
+
+            return finalUser;
         });
     }
 
@@ -991,5 +1029,41 @@ export class UsersService {
                 throw new ForbiddenException('Cannot assign properties from entities you do not have access to');
             }
         }
+    }
+
+    // ALSO ADD this method to verify the relationships are actually saved
+    async verifyUserAccess(userId: string) {
+        const user = await this.prisma.user.findUnique({
+            where: { id: userId },
+            include: {
+                entities: {
+                    select: {
+                        id: true,
+                        name: true,
+                        entityType: true
+                    }
+                },
+                properties: {
+                    select: {
+                        id: true,
+                        name: true,
+                        address: true,
+                        entityId: true
+                    }
+                }
+            }
+        });
+
+        console.log('User access verification:', {
+            userId: user?.id,
+            role: user?.role,
+            status: user?.status,
+            entitiesCount: user?.entities?.length || 0,
+            propertiesCount: user?.properties?.length || 0,
+            entities: user?.entities,
+            properties: user?.properties
+        });
+
+        return user;
     }
 }
