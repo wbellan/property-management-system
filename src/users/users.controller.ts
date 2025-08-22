@@ -15,10 +15,12 @@ import { CompleteInvitationDto } from './dto/complete-invitation.dto';
 
 @ApiTags('Users')
 @Controller('users')
-@UseGuards(JwtAuthGuard)
-@ApiBearerAuth('JWT-auth')
+// @UseGuards(JwtAuthGuard)
+// @ApiBearerAuth('JWT-auth')
 export class UsersController {
     constructor(private usersService: UsersService) { }
+
+    // PUBLIC ROUTES (no guards)
 
     @Post('setup-organization')
     @ApiOperation({ summary: 'Initial organization setup' })
@@ -26,6 +28,81 @@ export class UsersController {
         return this.usersService.setupOrganization(dto);
     }
 
+    //   Validate invitation token (public endpoint)
+    @Get('validate-invitation/:token')
+    @ApiOperation({ summary: 'Validate invitation token' })
+    @ApiResponse({
+        status: 200,
+        description: 'Invitation is valid',
+        schema: {
+            type: 'object',
+            properties: {
+                success: { type: 'boolean', example: true },
+                data: {
+                    type: 'object',
+                    properties: {
+                        id: { type: 'string' },
+                        firstName: { type: 'string' },
+                        lastName: { type: 'string' },
+                        email: { type: 'string' },
+                        role: { type: 'string' },
+                        organizationName: { type: 'string' },
+                        expiresAt: { type: 'string', format: 'date-time' }
+                    }
+                }
+            }
+        }
+    })
+    @ApiResponse({ status: 400, description: 'Invalid or expired token' })
+    @ApiResponse({ status: 404, description: 'Invitation not found' })
+    async validateInvitation(@Param('token') token: string) {
+        const result = await this.usersService.validateInvitation(token);
+
+        return {
+            success: true,
+            data: result
+        };
+    }
+
+    /**
+      * Complete invitation by creating user account (public endpoint)
+      */
+    @Post('complete-invitation')
+    @HttpCode(HttpStatus.CREATED)
+    @ApiOperation({ summary: 'Complete invitation and create user account' })
+    @ApiResponse({
+        status: 201,
+        description: 'User account created successfully',
+        schema: {
+            type: 'object',
+            properties: {
+                success: { type: 'boolean', example: true },
+                data: {
+                    type: 'object',
+                    properties: {
+                        id: { type: 'string' },
+                        email: { type: 'string' },
+                        firstName: { type: 'string' },
+                        lastName: { type: 'string' },
+                        role: { type: 'string' },
+                        message: { type: 'string' }
+                    }
+                }
+            }
+        }
+    })
+    @ApiResponse({ status: 400, description: 'Invalid token or validation errors' })
+    @ApiResponse({ status: 404, description: 'Invitation not found' })
+    async completeInvitation(@Body() completeData: CompleteInvitationDto) {
+        const result = await this.usersService.completeInvitation(completeData);
+
+        return {
+            success: true,
+            data: result
+        };
+    }
+
+    // PROTECTED ROUTES (with guards)
     /**
        * Send user invitation
        */
@@ -88,82 +165,6 @@ export class UsersController {
             success: true,
             data: result,
             message: 'Invitation sent successfully'
-        };
-    }
-
-    /**
-  * Validate invitation token (public endpoint)
-  */
-    @Get('validate-invitation/:token')
-    @ApiOperation({ summary: 'Validate invitation token' })
-    @ApiResponse({
-        status: 200,
-        description: 'Invitation is valid',
-        schema: {
-            type: 'object',
-            properties: {
-                success: { type: 'boolean', example: true },
-                data: {
-                    type: 'object',
-                    properties: {
-                        id: { type: 'string' },
-                        firstName: { type: 'string' },
-                        lastName: { type: 'string' },
-                        email: { type: 'string' },
-                        role: { type: 'string' },
-                        organizationName: { type: 'string' },
-                        expiresAt: { type: 'string', format: 'date-time' }
-                    }
-                }
-            }
-        }
-    })
-    @ApiResponse({ status: 400, description: 'Invalid or expired token' })
-    @ApiResponse({ status: 404, description: 'Invitation not found' })
-    async validateInvitation(@Param('token') token: string) {
-        const result = await this.usersService.validateInvitation(token);
-
-        return {
-            success: true,
-            data: result
-        };
-    }
-
-    /**
-       * Complete invitation by creating user account (public endpoint)
-       */
-    @Post('complete-invitation')
-    @HttpCode(HttpStatus.CREATED)
-    @ApiOperation({ summary: 'Complete invitation and create user account' })
-    @ApiResponse({
-        status: 201,
-        description: 'User account created successfully',
-        schema: {
-            type: 'object',
-            properties: {
-                success: { type: 'boolean', example: true },
-                data: {
-                    type: 'object',
-                    properties: {
-                        id: { type: 'string' },
-                        email: { type: 'string' },
-                        firstName: { type: 'string' },
-                        lastName: { type: 'string' },
-                        role: { type: 'string' },
-                        message: { type: 'string' }
-                    }
-                }
-            }
-        }
-    })
-    @ApiResponse({ status: 400, description: 'Invalid token or validation errors' })
-    @ApiResponse({ status: 404, description: 'Invitation not found' })
-    async completeInvitation(@Body() completeData: CompleteInvitationDto) {
-        const result = await this.usersService.completeInvitation(completeData);
-
-        return {
-            success: true,
-            data: result
         };
     }
 
