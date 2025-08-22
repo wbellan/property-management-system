@@ -92,6 +92,20 @@ export class AuthService {
                         name: true,
                     },
                 },
+                entities: {  // ADD THIS
+                    select: {
+                        id: true,
+                        name: true,
+                        entityType: true,
+                    },
+                },
+                properties: {  // ADD THIS TOO if needed
+                    select: {
+                        id: true,
+                        name: true,
+                        address: true,
+                    },
+                },
             },
         });
 
@@ -135,7 +149,9 @@ export class AuthService {
                 lastName: user.lastName,
                 role: user.role,
                 organizationId: user.organizationId,
-                organization: user.organization
+                organization: user.organization,
+                entities: user.entities,      
+                properties: user.properties
             },
         };
     }
