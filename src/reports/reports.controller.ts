@@ -8,6 +8,7 @@ import {
   Body,
   UseGuards,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
@@ -391,6 +392,44 @@ export class ReportsController {
 
   // ============= DASHBOARD METRICS =============
 
+  // Add this new endpoint above the existing dashboard endpoint
+  @Get('dashboard/organization/:organizationId')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ORG_ADMIN, UserRole.ENTITY_MANAGER)
+  @ApiOperation({ summary: 'Get organization-wide dashboard metrics' })
+  @ApiResponse({ status: 200, description: 'Organization dashboard metrics retrieved successfully' })
+  async getOrganizationDashboardMetrics(
+    @Param('organizationId') organizationId: string,
+    @CurrentUser('role') userRole: UserRole,
+    @CurrentUser('organizationId') userOrgId: string,
+    @CurrentUser('entities') userEntities: any[],
+  ) {
+    console.log('getOrganizationDashboardMetrics called with:', {
+      organizationId,
+      userRole,
+      userOrgId,
+      userEntitiesCount: userEntities?.length
+    });
+
+    // Verify user can access this organization
+    if (userRole !== UserRole.SUPER_ADMIN && organizationId !== userOrgId) {
+      throw new ForbiddenException('Access denied to this organization');
+    }
+
+    const entityIds = userEntities?.map(e => e.id) || [];
+    const result = await this.reportsService.getOrganizationDashboardMetrics(
+      organizationId,
+      userRole,
+      userOrgId,
+      entityIds,
+    );
+
+    return {
+      success: true,
+      data: result
+    };
+  }
+
   @Get('dashboard/:entityId')
   @UseGuards(RolesGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.ORG_ADMIN, UserRole.ENTITY_MANAGER, UserRole.PROPERTY_MANAGER, UserRole.ACCOUNTANT)
@@ -402,6 +441,13 @@ export class ReportsController {
     @CurrentUser('organizationId') userOrgId: string,
     @CurrentUser('entities') userEntities: any[],
   ) {
+    console.log('getDashboardMetrics called with:', {
+      entityId,
+      userRole,
+      userOrgId,
+      userEntitiesCount: userEntities?.length
+    });
+
     const entityIds = userEntities.map(e => e.id);
     return this.reportsService.getDashboardMetrics(
       entityId,

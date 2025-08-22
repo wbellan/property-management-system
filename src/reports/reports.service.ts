@@ -164,7 +164,7 @@ export class ReportsService {
                 acc[propertyId].vacantSpaces++;
             }
 
-            acc[propertyId].occupancyRate = acc[propertyId].totalSpaces > 0 ? 
+            acc[propertyId].occupancyRate = acc[propertyId].totalSpaces > 0 ?
                 (acc[propertyId].occupiedSpaces / acc[propertyId].totalSpaces) * 100 : 0;
 
             return acc;
@@ -203,7 +203,7 @@ export class ReportsService {
 
         // Get income for the period
         const income = await this.getIncomeForPeriod(entityId, start, end);
-        
+
         // Get expenses for the period
         const expenses = await this.getExpensesForPeriod(entityId, start, end);
 
@@ -279,13 +279,13 @@ export class ReportsService {
         });
 
         // Filter for occupied or include vacant based on parameter
-        const filteredSpaces = includeVacant ? 
-            spaces : 
+        const filteredSpaces = includeVacant ?
+            spaces :
             spaces.filter(space => space.leases.length > 0);
 
         const rentRoll = filteredSpaces.map(space => {
             const activeLease = space.leases[0];
-            
+
             return {
                 spaceId: space.id,
                 spaceName: space.unitNumber, // Use unitNumber as spaceName
@@ -411,8 +411,8 @@ export class ReportsService {
                 expirationAnalysis: {
                     daysUntilExpiration,
                     riskLevel,
-                    renewalRecommendation: daysUntilExpiration <= 60 ? 
-                        'Contact immediately for renewal discussion' : 
+                    renewalRecommendation: daysUntilExpiration <= 60 ?
+                        'Contact immediately for renewal discussion' :
                         'Schedule renewal discussion',
                 },
             };
@@ -570,10 +570,10 @@ export class ReportsService {
         const tenantAnalytics = tenantLeases.map(lease => {
             const payments = lease.rentPayments || [];
             const totalPayments = payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
-            
+
             // Calculate late payments based on payment status instead of isLate field
             const latePayments = payments.filter(payment => payment.status === 'PENDING' || payment.status === 'FAILED').length;
-            const onTimeRate = payments.length > 0 ? 
+            const onTimeRate = payments.length > 0 ?
                 ((payments.length - latePayments) / payments.length) * 100 : 100;
 
             return {
@@ -607,7 +607,7 @@ export class ReportsService {
 
         const summary = {
             totalTenants: tenantAnalytics.length,
-            averageOnTimeRate: tenantAnalytics.length > 0 ? 
+            averageOnTimeRate: tenantAnalytics.length > 0 ?
                 tenantAnalytics.reduce((sum, t) => sum + t.paymentMetrics.onTimePaymentRate, 0) / tenantAnalytics.length : 0,
             totalMonthlyRent: tenantAnalytics.reduce((sum, t) => sum + Number(t.lease.monthlyRent), 0),
         };
@@ -652,7 +652,7 @@ export class ReportsService {
         const portfolioMetrics = properties.map(property => {
             const totalSpaces = property.spaces.length;
             const occupiedSpaces = property.spaces.filter(space => space.leases.length > 0).length;
-            const monthlyRevenue = property.spaces.reduce((sum, space) => 
+            const monthlyRevenue = property.spaces.reduce((sum, space) =>
                 sum + Number(space.leases[0]?.monthlyRent || 0), 0
             );
 
@@ -675,7 +675,7 @@ export class ReportsService {
             totalSpaces: portfolioMetrics.reduce((sum, p) => sum + p.totalSpaces, 0),
             totalOccupiedSpaces: portfolioMetrics.reduce((sum, p) => sum + p.occupiedSpaces, 0),
             totalVacantSpaces: portfolioMetrics.reduce((sum, p) => sum + p.vacantSpaces, 0),
-            averageOccupancyRate: portfolioMetrics.length > 0 ? 
+            averageOccupancyRate: portfolioMetrics.length > 0 ?
                 portfolioMetrics.reduce((sum, p) => sum + p.occupancyRate, 0) / portfolioMetrics.length : 0,
             totalMonthlyRevenue: portfolioMetrics.reduce((sum, p) => sum + p.monthlyRevenue, 0),
             totalAnnualRevenue: portfolioMetrics.reduce((sum, p) => sum + p.annualRevenue, 0),
@@ -749,7 +749,7 @@ export class ReportsService {
         await this.verifyEntityAccess(entityId, userRole, userOrgId, userEntities);
 
         let reportData: any;
-        
+
         switch (reportType) {
             case 'rent-roll':
                 reportData = await this.getEnhancedRentRollReport(entityId, userRole, userOrgId, userEntities);
@@ -816,6 +816,136 @@ export class ReportsService {
         };
     }
 
+    // In reports.service.ts - Add new method
+    async getOrganizationDashboardMetrics(
+        organizationId: string,
+        userRole: UserRole,
+        userOrgId: string,
+        userEntityIds: string[]
+    ) {
+        // Get all entities for this organization that user can access
+        let entityFilter: any = { organizationId };
+
+        if (userRole === UserRole.ENTITY_MANAGER) {
+            entityFilter.id = { in: userEntityIds };
+        }
+
+        const entities = await this.prisma.entity.findMany({
+            where: entityFilter,
+            select: { id: true }
+        });
+
+        const accessibleEntityIds = entities.map(e => e.id);
+
+        // Get occupancy across all accessible entities
+        const allSpaces = await this.prisma.space.findMany({
+            where: {
+                property: {
+                    entityId: { in: accessibleEntityIds }
+                }
+            },
+            include: {
+                leases: {
+                    where: { status: 'ACTIVE' },
+                    select: { monthlyRent: true }
+                }
+            }
+        });
+
+        const totalSpaces = allSpaces.length;
+        const occupiedSpaces = allSpaces.filter(space => space.leases.length > 0).length;
+        const occupancyRate = totalSpaces > 0 ? (occupiedSpaces / totalSpaces) * 100 : 0;
+
+        // Get financial data across all accessible entities
+        const currentMonth = new Date();
+        const lastMonth = new Date();
+        lastMonth.setMonth(lastMonth.getMonth() - 1);
+
+        const monthlyRevenue = await this.prisma.payment.aggregate({
+            where: {
+                createdAt: { gte: lastMonth, lte: currentMonth },
+                invoice: {
+                    lease: {
+                        space: {
+                            property: {
+                                entityId: { in: accessibleEntityIds }
+                            }
+                        }
+                    }
+                }
+            },
+            _sum: { amount: true }
+        });
+
+        // Get maintenance across all accessible entities
+        const maintenanceStats = await Promise.all([
+            // Get by status
+            this.prisma.maintenanceRequest.groupBy({
+                by: ['status'],
+                where: {
+                    property: {
+                        entityId: { in: accessibleEntityIds }
+                    }
+                },
+                _count: true
+            }),
+            // Get by priority
+            this.prisma.maintenanceRequest.groupBy({
+                by: ['priority'],
+                where: {
+                    property: {
+                        entityId: { in: accessibleEntityIds }
+                    }
+                },
+                _count: true
+            })
+        ]);
+
+        const [statusStats, priorityStats] = maintenanceStats;
+
+        // Get expiring leases across all accessible entities
+        const futureDate = new Date();
+        futureDate.setMonth(futureDate.getMonth() + 1);
+
+        const expiringLeases = await this.prisma.lease.count({
+            where: {
+                space: {
+                    property: {
+                        entityId: { in: accessibleEntityIds }
+                    }
+                },
+                status: 'ACTIVE',
+                endDate: { lte: futureDate }
+            }
+        });
+
+        return {
+            organizationId,
+            accessibleEntities: accessibleEntityIds.length,
+            occupancy: {
+                rate: Math.round(occupancyRate * 100) / 100,
+                totalSpaces,
+                occupiedSpaces,
+            },
+            financial: {
+                monthlyRevenue: Number(monthlyRevenue._sum.amount || 0),
+            },
+            maintenance: {
+                openTasks: statusStats.find(s => s.status === 'OPEN')?._count || 0,
+                inProgress: statusStats.find(s => s.status === 'IN_PROGRESS')?._count || 0,
+                completed: statusStats.find(s => s.status === 'COMPLETED')?._count || 0,
+                emergency: priorityStats.find(p => p.priority === 'EMERGENCY')?._count || 0,
+                high: priorityStats.find(p => p.priority === 'HIGH')?._count || 0,
+                medium: priorityStats.find(p => p.priority === 'MEDIUM')?._count || 0,
+                low: priorityStats.find(p => p.priority === 'LOW')?._count || 0,
+            },
+            leases: {
+                expiring: expiringLeases,
+            },
+            generatedAt: new Date(),
+        };
+    }
+
     // ============= HELPER METHODS =============
 
     private async getIncomeForPeriod(entityId: string, start: Date, end: Date) {
@@ -869,7 +999,7 @@ export class ReportsService {
     private generateSimpleProjections(summary: any) {
         const monthlyGrowthRate = 0.02;
         const projectedMonthlyRevenue = summary.totalMonthlyRevenue * (1 + monthlyGrowthRate);
-        
+
         return {
             nextMonth: {
                 projectedRevenue: projectedMonthlyRevenue,
