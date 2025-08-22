@@ -816,7 +816,6 @@ export class ReportsService {
         };
     }
 
-    // In reports.service.ts - Add new method
     async getOrganizationDashboardMetrics(
         organizationId: string,
         userRole: UserRole,
@@ -857,25 +856,78 @@ export class ReportsService {
         const occupancyRate = totalSpaces > 0 ? (occupiedSpaces / totalSpaces) * 100 : 0;
 
         // Get financial data across all accessible entities
-        const currentMonth = new Date();
-        const lastMonth = new Date();
-        lastMonth.setMonth(lastMonth.getMonth() - 1);
+        console.log('=== DASHBOARD DEBUG ===');
+        console.log('Organization ID:', organizationId);
+        console.log('Accessible Entity IDs:', accessibleEntityIds);
 
-        const monthlyRevenue = await this.prisma.payment.aggregate({
+        // Get current month's expected revenue based on active leases
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+        // console.log('=== REVENUE CALCULATION DEBUG ===');
+        // console.log('Current month range:', { startOfMonth, endOfMonth });
+
+        // Get all active leases and filter in application logic
+        const currentMonthLeases = await this.prisma.lease.findMany({
             where: {
-                createdAt: { gte: lastMonth, lte: currentMonth },
-                invoice: {
-                    lease: {
-                        space: {
-                            property: {
-                                entityId: { in: accessibleEntityIds }
+                space: {
+                    property: {
+                        entityId: { in: accessibleEntityIds }
+                    }
+                },
+                status: 'ACTIVE',
+                startDate: { lte: endOfMonth }
+            },
+            select: {
+                id: true,
+                monthlyRent: true,
+                startDate: true,
+                endDate: true,
+                space: {
+                    select: {
+                        unitNumber: true,
+                        property: {
+                            select: {
+                                name: true
                             }
                         }
                     }
                 }
-            },
-            _sum: { amount: true }
+            }
         });
+
+        // Filter in JavaScript to handle nullable endDate
+        const activeInCurrentMonth = currentMonthLeases.filter(lease => {
+            // Include if no end date (ongoing) or end date is after month start
+            return !lease.endDate || lease.endDate >= startOfMonth;
+        });
+
+        console.log(`Found ${activeInCurrentMonth.length} active leases for current month`);
+
+        // Calculate prorated revenue for partial months
+        let currentMonthRevenue = 0;
+        const daysInMonth = endOfMonth.getDate();
+
+        activeInCurrentMonth.forEach(lease => {
+            const leaseStart = lease.startDate > startOfMonth ? lease.startDate : startOfMonth;
+            const leaseEnd = lease.endDate && lease.endDate < endOfMonth ? lease.endDate : endOfMonth;
+
+            const daysActive = Math.ceil((leaseEnd.getTime() - leaseStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+            const proratedAmount = (Number(lease.monthlyRent) / daysInMonth) * daysActive;
+
+            console.log(`Lease ${lease.id} (${lease.space.property.name} - ${lease.space.unitNumber}):`, {
+                monthlyRent: Number(lease.monthlyRent),
+                daysActive,
+                daysInMonth,
+                proratedAmount: Math.round(proratedAmount * 100) / 100
+            });
+
+            currentMonthRevenue += proratedAmount;
+        });
+
+        console.log('Total expected monthly revenue:', Math.round(currentMonthRevenue * 100) / 100);
+        // console.log('=== END REVENUE DEBUG ===');
 
         // Get maintenance across all accessible entities
         const maintenanceStats = await Promise.all([
@@ -928,7 +980,8 @@ export class ReportsService {
                 occupiedSpaces,
             },
             financial: {
-                monthlyRevenue: Number(monthlyRevenue._sum.amount || 0),
+                monthlyRevenue: Math.round(currentMonthRevenue * 100) / 100
+                // monthlyRevenue: Number(monthlyRevenue._sum.amount || 0),
             },
             maintenance: {
                 openTasks: statusStats.find(s => s.status === 'OPEN')?._count || 0,
