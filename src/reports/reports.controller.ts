@@ -392,37 +392,67 @@ export class ReportsController {
 
   // ============= DASHBOARD METRICS =============
 
-  // Add this new endpoint above the existing dashboard endpoint
+  // In reports.controller.ts - replace the existing dashboard method
   @Get('dashboard/organization/:organizationId')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ORG_ADMIN, UserRole.ENTITY_MANAGER)
-  @ApiOperation({ summary: 'Get organization-wide dashboard metrics' })
-  @ApiResponse({ status: 200, description: 'Organization dashboard metrics retrieved successfully' })
-  async getOrganizationDashboardMetrics(
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ORG_ADMIN, UserRole.ENTITY_MANAGER, UserRole.PROPERTY_MANAGER, UserRole.ACCOUNTANT, UserRole.MAINTENANCE, UserRole.TENANT)
+  @ApiOperation({ summary: 'Get role-specific dashboard metrics' })
+  @ApiResponse({ status: 200, description: 'Dashboard metrics retrieved successfully' })
+  async getDashboard(
     @Param('organizationId') organizationId: string,
     @CurrentUser('role') userRole: UserRole,
+    @CurrentUser('userId') userId: string,
     @CurrentUser('organizationId') userOrgId: string,
     @CurrentUser('entities') userEntities: any[],
+    @CurrentUser('properties') userProperties: any[],
+    @CurrentUser() fullUser: any,
   ) {
-    console.log('getOrganizationDashboardMetrics called with:', {
-      organizationId,
+    console.log('Dashboard request for role:', userRole);
+    console.log('Dashboard request debug:', {
       userRole,
+      userId, // This is probably undefined
       userOrgId,
-      userEntitiesCount: userEntities?.length
+      fullUser, // This will show you what's actually in the user object
     });
 
-    // Verify user can access this organization
+    // Verify organization access
     if (userRole !== UserRole.SUPER_ADMIN && organizationId !== userOrgId) {
       throw new ForbiddenException('Access denied to this organization');
     }
 
     const entityIds = userEntities?.map(e => e.id) || [];
-    const result = await this.reportsService.getOrganizationDashboardMetrics(
-      organizationId,
-      userRole,
-      userOrgId,
-      entityIds,
-    );
+    const propertyIds = userProperties?.map(p => p.id) || [];
+
+    let result;
+    switch (userRole) {
+      case UserRole.SUPER_ADMIN:
+      case UserRole.ORG_ADMIN:
+        result = await this.reportsService.getAdminDashboard(organizationId, userRole, userOrgId, entityIds);
+        break;
+
+      case UserRole.ENTITY_MANAGER:
+        result = await this.reportsService.getEntityManagerDashboard(organizationId, entityIds);
+        break;
+
+      case UserRole.PROPERTY_MANAGER:
+        result = await this.reportsService.getPropertyManagerDashboard(propertyIds);
+        break;
+
+      case UserRole.ACCOUNTANT:
+        result = await this.reportsService.getAccountantDashboard(organizationId, entityIds);
+        break;
+
+      case UserRole.MAINTENANCE:
+        result = await this.reportsService.getMaintenanceDashboard(userId, propertyIds);
+        break;
+
+      case UserRole.TENANT:
+        result = await this.reportsService.getTenantDashboard(userId);
+        break;
+
+      default:
+        throw new ForbiddenException('Invalid role for dashboard access');
+    }
 
     return {
       success: true,

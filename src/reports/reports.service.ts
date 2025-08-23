@@ -791,29 +791,15 @@ export class ReportsService {
 
     // ============= DASHBOARD METRICS =============
 
-    async getDashboardMetrics(
-        entityId: string,
+    // SUPER_ADMIN & ORG_ADMIN Dashboard
+    async getAdminDashboard(
+        organizationId: string,
         userRole: UserRole,
         userOrgId: string,
-        userEntities: string[]
+        userEntityIds: string[]
     ) {
-        await this.verifyEntityAccess(entityId, userRole, userOrgId, userEntities);
-
-        const [occupancyData, financialSummary] = await Promise.all([
-            this.getOccupancyAnalytics(entityId, userRole, userOrgId, userEntities),
-            this.getRecentFinancialSummary(entityId),
-        ]);
-
-        return {
-            entityId,
-            occupancy: {
-                rate: occupancyData.summary.occupancyRate,
-                totalSpaces: occupancyData.summary.totalSpaces,
-                occupiedSpaces: occupancyData.summary.occupiedSpaces,
-            },
-            financial: financialSummary,
-            lastUpdated: new Date(),
-        };
+        // Use existing organization-wide dashboard logic
+        return this.getOrganizationDashboardMetrics(organizationId, userRole, userOrgId, userEntityIds);
     }
 
     async getOrganizationDashboardMetrics(
@@ -999,7 +985,440 @@ export class ReportsService {
         };
     }
 
+    // ENTITY_MANAGER Dashboard
+    async getEntityManagerDashboard(organizationId: string, entityIds: string[]) {
+        const occupancyData = await this.getEntityOccupancyMetrics(entityIds);
+        const financialData = await this.getEntityFinancialMetrics(entityIds);
+        const maintenanceData = await this.getEntityMaintenanceMetrics(entityIds);
+        const leaseData = await this.getEntityLeaseMetrics(entityIds);
+
+        return {
+            dashboardType: 'ENTITY_MANAGER',
+            organizationId,
+            accessibleEntities: entityIds.length,
+            occupancy: occupancyData,
+            financial: financialData,
+            maintenance: maintenanceData,
+            leases: leaseData,
+            generatedAt: new Date(),
+        };
+    }
+
+    // PROPERTY_MANAGER Dashboard
+    async getPropertyManagerDashboard(propertyIds: string[]) {
+        if (propertyIds.length === 0) {
+            return this.getEmptyDashboard('PROPERTY_MANAGER');
+        }
+
+        const properties = await this.prisma.property.findMany({
+            where: { id: { in: propertyIds } },
+            include: {
+                spaces: {
+                    include: {
+                        leases: { where: { status: 'ACTIVE' } }
+                    }
+                }
+            }
+        });
+
+        const totalSpaces = properties.reduce((sum, p) => sum + p.spaces.length, 0);
+        const occupiedSpaces = properties.reduce((sum, p) =>
+            sum + p.spaces.filter(s => s.leases.length > 0).length, 0
+        );
+
+        const monthlyRevenue = properties.reduce((sum, p) =>
+            sum + p.spaces.reduce((spaceSum, s) =>
+                spaceSum + (s.leases[0]?.monthlyRent ? Number(s.leases[0].monthlyRent) : 0), 0
+            ), 0
+        );
+
+        const maintenanceStats = await this.prisma.maintenanceRequest.groupBy({
+            by: ['status', 'priority'],
+            where: { propertyId: { in: propertyIds } },
+            _count: true
+        });
+
+        const upcomingLeaseExpirations = await this.prisma.lease.count({
+            where: {
+                space: { propertyId: { in: propertyIds } },
+                status: 'ACTIVE',
+                endDate: { lte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) } // 30 days
+            }
+        });
+
+        return {
+            dashboardType: 'PROPERTY_MANAGER',
+            assignedProperties: properties.length,
+            occupancy: {
+                rate: totalSpaces > 0 ? Math.round((occupiedSpaces / totalSpaces) * 10000) / 100 : 0,
+                totalSpaces,
+                occupiedSpaces,
+            },
+            financial: { monthlyRevenue },
+            maintenance: {
+                openTasks: maintenanceStats.filter(s => s.status === 'OPEN').reduce((sum, s) => sum + s._count, 0),
+                emergency: maintenanceStats.filter(s => s.priority === 'EMERGENCY').reduce((sum, s) => sum + s._count, 0),
+            },
+            leases: { expiring: upcomingLeaseExpirations },
+            properties: properties.map(p => ({
+                id: p.id,
+                name: p.name,
+                totalSpaces: p.spaces.length,
+                occupiedSpaces: p.spaces.filter(s => s.leases.length > 0).length,
+                monthlyRevenue: p.spaces.reduce((sum, s) =>
+                    sum + (s.leases[0]?.monthlyRent ? Number(s.leases[0].monthlyRent) : 0), 0
+                )
+            })),
+            generatedAt: new Date(),
+        };
+    }
+
+    // ACCOUNTANT Dashboard
+    async getAccountantDashboard(organizationId: string, entityIds: string[]) {
+        const currentMonth = new Date();
+        const lastMonth = new Date();
+        lastMonth.setMonth(lastMonth.getMonth() - 1);
+
+        const [revenue, expenses, outstandingInvoices, recentPayments] = await Promise.all([
+            this.prisma.payment.aggregate({
+                where: {
+                    createdAt: { gte: lastMonth, lte: currentMonth },
+                    invoice: {
+                        lease: {
+                            space: {
+                                property: { entityId: { in: entityIds } }
+                            }
+                        }
+                    }
+                },
+                _sum: { amount: true }
+            }),
+            this.prisma.propertyExpense.aggregate({
+                where: {
+                    property: { entityId: { in: entityIds } },
+                    createdAt: { gte: lastMonth, lte: currentMonth }
+                },
+                _sum: { amount: true }
+            }),
+            // Fix: Use correct enum value - 'SENT' instead of 'PENDING'
+            this.prisma.invoice.count({
+                where: {
+                    status: 'SENT', // Changed from 'PENDING' to 'SENT' based on your enum
+                    lease: {
+                        space: {
+                            property: { entityId: { in: entityIds } }
+                        }
+                    }
+                }
+            }),
+            this.prisma.payment.count({
+                where: {
+                    createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }, // Last 7 days
+                    invoice: {
+                        lease: {
+                            space: {
+                                property: { entityId: { in: entityIds } }
+                            }
+                        }
+                    }
+                }
+            })
+        ]);
+
+        return {
+            dashboardType: 'ACCOUNTANT',
+            organizationId,
+            financial: {
+                monthlyRevenue: Number(revenue._sum.amount || 0),
+                monthlyExpenses: Number(expenses._sum.amount || 0),
+                netIncome: Number(revenue._sum.amount || 0) - Number(expenses._sum.amount || 0),
+                outstandingInvoices,
+                recentPayments,
+            },
+            generatedAt: new Date(),
+        };
+    }
+
+    // MAINTENANCE Dashboard
+    async getMaintenanceDashboard(userId: string, propertyIds: string[]) {
+        // Get assignments through the MaintenanceAssignment junction table
+        const assignments = await this.prisma.maintenanceAssignment.findMany({
+            where: {
+                vendor: {
+                    // Assuming maintenance user is linked to vendor somehow
+                    // You might need to adjust this based on your actual data model
+                },
+                maintenanceRequest: {
+                    status: { in: ['OPEN', 'IN_PROGRESS'] }
+                }
+            },
+            include: {
+                maintenanceRequest: {
+                    include: {
+                        property: { select: { name: true } },
+                        space: { select: { unitNumber: true } }
+                    }
+                }
+            },
+            orderBy: [
+                { maintenanceRequest: { priority: 'desc' } },
+                { maintenanceRequest: { createdAt: 'asc' } }
+            ]
+        });
+
+        // Alternative approach if maintenance users aren't linked to vendors:
+        // Get all maintenance requests for properties this user can access
+        const allMaintenanceRequests = await this.prisma.maintenanceRequest.findMany({
+            where: {
+                propertyId: { in: propertyIds },
+                status: { in: ['OPEN', 'IN_PROGRESS'] }
+            },
+            include: {
+                property: { select: { name: true } },
+                space: { select: { unitNumber: true } }
+            },
+            orderBy: [
+                { priority: 'desc' },
+                { createdAt: 'asc' }
+            ]
+        });
+
+        // Get stats for this user's assigned work (or all work if no specific assignments)
+        const stats = await this.prisma.maintenanceRequest.groupBy({
+            by: ['status', 'priority'],
+            where: {
+                propertyId: { in: propertyIds }
+            },
+            _count: true
+        });
+
+        const workOrders = allMaintenanceRequests.map(req => ({
+            id: req.id,
+            title: req.title,
+            priority: req.priority,
+            status: req.status,
+            property: req.property.name,
+            unit: req.space?.unitNumber || 'Common Area',
+            createdAt: req.createdAt,
+        }));
+
+        return {
+            dashboardType: 'MAINTENANCE',
+            assignments: {
+                total: workOrders.length,
+                emergency: workOrders.filter(w => w.priority === 'EMERGENCY').length,
+                high: workOrders.filter(w => w.priority === 'HIGH').length,
+            },
+            workOrders: workOrders.slice(0, 10),
+            performance: {
+                completed: stats.filter(s => s.status === 'COMPLETED').reduce((sum, s) => sum + s._count, 0),
+                inProgress: stats.filter(s => s.status === 'IN_PROGRESS').reduce((sum, s) => sum + s._count, 0),
+            },
+            generatedAt: new Date(),
+        };
+    }
+
+    // TENANT Dashboard
+    async getTenantDashboard(userId: string) {
+        console.log('Getting tenant dashboard for userId:', userId);
+
+        if (!userId) {
+            return {
+                dashboardType: 'TENANT',
+                message: 'User ID is required',
+                generatedAt: new Date(),
+            };
+        }
+
+        // Get user with tenant profile
+        const user = await this.prisma.user.findUnique({
+            where: { id: userId },
+            include: {
+                tenantProfile: true, // Just get the basic tenant profile
+            }
+        });
+
+        if (!user?.tenantProfile) {
+            return {
+                dashboardType: 'TENANT',
+                message: 'No tenant profile found',
+                generatedAt: new Date(),
+            };
+        }
+
+        // Get leases separately - they're linked directly to the user via tenantId
+        const activeLeases = await this.prisma.lease.findMany({
+            where: {
+                tenantId: userId,
+                status: { in: ['ACTIVE'] }
+            },
+            include: {
+                space: {
+                    include: { property: true }
+                },
+                rentPayments: {
+                    orderBy: { paymentDate: 'desc' },
+                    take: 5
+                }
+            }
+        });
+
+        const activeLease = activeLeases[0];
+        if (!activeLease) {
+            return {
+                dashboardType: 'TENANT',
+                message: 'No active lease found',
+                generatedAt: new Date(),
+            };
+        }
+
+        // Get maintenance requests for this tenant
+        const maintenanceRequests = await this.prisma.maintenanceRequest.findMany({
+            where: {
+                tenantId: userId
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 5
+        });
+
+        return {
+            dashboardType: 'TENANT',
+            lease: {
+                property: activeLease.space.property.name,
+                unit: activeLease.space.unitNumber,
+                monthlyRent: Number(activeLease.monthlyRent),
+                leaseEnd: activeLease.endDate,
+                daysUntilExpiry: activeLease.endDate ?
+                    Math.ceil((activeLease.endDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) : null
+            },
+            payments: {
+                recent: activeLease.rentPayments.map(p => ({
+                    date: p.paymentDate,
+                    amount: Number(p.amount),
+                    status: p.status
+                })),
+                nextDue: this.calculateNextPaymentDue(activeLease.rentPayments)
+            },
+            maintenance: {
+                recent: maintenanceRequests.map(r => ({
+                    id: r.id,
+                    title: r.title,
+                    status: r.status,
+                    createdAt: r.createdAt
+                }))
+            },
+            generatedAt: new Date(),
+        };
+    }
+
+    async getDashboardMetrics(
+        entityId: string,
+        userRole: UserRole,
+        userOrgId: string,
+        userEntities: string[]
+    ) {
+        await this.verifyEntityAccess(entityId, userRole, userOrgId, userEntities);
+
+        const [occupancyData, financialSummary] = await Promise.all([
+            this.getOccupancyAnalytics(entityId, userRole, userOrgId, userEntities),
+            this.getRecentFinancialSummary(entityId),
+        ]);
+
+        return {
+            entityId,
+            occupancy: {
+                rate: occupancyData.summary.occupancyRate,
+                totalSpaces: occupancyData.summary.totalSpaces,
+                occupiedSpaces: occupancyData.summary.occupiedSpaces,
+            },
+            financial: financialSummary,
+            lastUpdated: new Date(),
+        };
+    }
+
     // ============= HELPER METHODS =============
+
+    private async getEntityOccupancyMetrics(entityIds: string[]) {
+        const spaces = await this.prisma.space.findMany({
+            where: { property: { entityId: { in: entityIds } } },
+            include: { leases: { where: { status: 'ACTIVE' } } }
+        });
+
+        const totalSpaces = spaces.length;
+        const occupiedSpaces = spaces.filter(s => s.leases.length > 0).length;
+
+        return {
+            rate: totalSpaces > 0 ? Math.round((occupiedSpaces / totalSpaces) * 10000) / 100 : 0,
+            totalSpaces,
+            occupiedSpaces,
+        };
+    }
+
+    private async getEntityFinancialMetrics(entityIds: string[]) {
+        const currentMonth = new Date();
+        const lastMonth = new Date();
+        lastMonth.setMonth(lastMonth.getMonth() - 1);
+
+        const revenue = await this.prisma.payment.aggregate({
+            where: {
+                createdAt: { gte: lastMonth, lte: currentMonth },
+                invoice: {
+                    lease: {
+                        space: {
+                            property: { entityId: { in: entityIds } }
+                        }
+                    }
+                }
+            },
+            _sum: { amount: true }
+        });
+
+        return { monthlyRevenue: Number(revenue._sum.amount || 0) };
+    }
+
+    private async getEntityMaintenanceMetrics(entityIds: string[]) {
+        const stats = await this.prisma.maintenanceRequest.groupBy({
+            by: ['status', 'priority'],
+            where: { property: { entityId: { in: entityIds } } },
+            _count: true
+        });
+
+        return {
+            openTasks: stats.filter(s => s.status === 'OPEN').reduce((sum, s) => sum + s._count, 0),
+            emergency: stats.filter(s => s.priority === 'EMERGENCY').reduce((sum, s) => sum + s._count, 0),
+        };
+    }
+
+    private async getEntityLeaseMetrics(entityIds: string[]) {
+        const expiring = await this.prisma.lease.count({
+            where: {
+                space: { property: { entityId: { in: entityIds } } },
+                status: 'ACTIVE',
+                endDate: { lte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) }
+            }
+        });
+
+        return { expiring };
+    }
+
+    private getEmptyDashboard(dashboardType: string) {
+        return {
+            dashboardType,
+            message: 'No data available - no assigned properties or entities',
+            generatedAt: new Date(),
+        };
+    }
+
+    private calculateNextPaymentDue(payments: any[]) {
+        // Simple logic - in real app you'd have more sophisticated payment due calculation
+        if (payments.length === 0) return null;
+
+        const lastPayment = payments[0];
+        const nextDue = new Date(lastPayment.paymentDate);
+        nextDue.setMonth(nextDue.getMonth() + 1);
+
+        return nextDue;
+    }
 
     private async getIncomeForPeriod(entityId: string, start: Date, end: Date) {
         const payments = await this.prisma.payment.aggregate({
