@@ -18,6 +18,7 @@ import { MaintenanceModule } from './maintenance/maintenance.module';
 import { ReportsModule } from './reports/reports.module';
 import { TenantsModule } from './tenants/tenants.module';
 import { EmailModule } from './email/email.module';
+import { TasksModule } from './tasks/tasks.module';
 
 @Module({
     imports: [
@@ -50,7 +51,8 @@ import { EmailModule } from './email/email.module';
         MaintenanceModule,
         ReportsModule,
         TenantsModule,
-        EmailModule
+        EmailModule,
+        TasksModule
     ],
     providers: [
         {
