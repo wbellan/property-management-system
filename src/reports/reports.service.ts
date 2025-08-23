@@ -1141,13 +1141,10 @@ export class ReportsService {
 
     // MAINTENANCE Dashboard
     async getMaintenanceDashboard(userId: string, propertyIds: string[]) {
-        // Get assignments through the MaintenanceAssignment junction table
+        // Get assignments specifically for this maintenance user
         const assignments = await this.prisma.maintenanceAssignment.findMany({
             where: {
-                vendor: {
-                    // Assuming maintenance user is linked to vendor somehow
-                    // You might need to adjust this based on your actual data model
-                },
+                assignedUserId: userId,
                 maintenanceRequest: {
                     status: { in: ['OPEN', 'IN_PROGRESS'] }
                 }
@@ -1166,53 +1163,43 @@ export class ReportsService {
             ]
         });
 
-        // Alternative approach if maintenance users aren't linked to vendors:
-        // Get all maintenance requests for properties this user can access
-        const allMaintenanceRequests = await this.prisma.maintenanceRequest.findMany({
+        // Get overall stats for this user's assignments
+        const allUserAssignments = await this.prisma.maintenanceAssignment.findMany({
             where: {
-                propertyId: { in: propertyIds },
-                status: { in: ['OPEN', 'IN_PROGRESS'] }
+                assignedUserId: userId
             },
             include: {
-                property: { select: { name: true } },
-                space: { select: { unitNumber: true } }
-            },
-            orderBy: [
-                { priority: 'desc' },
-                { createdAt: 'asc' }
-            ]
+                maintenanceRequest: {
+                    select: {
+                        status: true,
+                        priority: true
+                    }
+                }
+            }
         });
 
-        // Get stats for this user's assigned work (or all work if no specific assignments)
-        const stats = await this.prisma.maintenanceRequest.groupBy({
-            by: ['status', 'priority'],
-            where: {
-                propertyId: { in: propertyIds }
-            },
-            _count: true
-        });
-
-        const workOrders = allMaintenanceRequests.map(req => ({
-            id: req.id,
-            title: req.title,
-            priority: req.priority,
-            status: req.status,
-            property: req.property.name,
-            unit: req.space?.unitNumber || 'Common Area',
-            createdAt: req.createdAt,
+        const workOrders = assignments.map(assignment => ({
+            id: assignment.maintenanceRequest.id,
+            title: assignment.maintenanceRequest.title,
+            priority: assignment.maintenanceRequest.priority,
+            status: assignment.maintenanceRequest.status,
+            property: assignment.maintenanceRequest.property.name,
+            unit: assignment.maintenanceRequest.space?.unitNumber || 'Common Area',
+            createdAt: assignment.maintenanceRequest.createdAt,
+            assignmentStatus: assignment.status,
         }));
 
         return {
             dashboardType: 'MAINTENANCE',
             assignments: {
-                total: workOrders.length,
+                total: assignments.length,
                 emergency: workOrders.filter(w => w.priority === 'EMERGENCY').length,
                 high: workOrders.filter(w => w.priority === 'HIGH').length,
             },
             workOrders: workOrders.slice(0, 10),
             performance: {
-                completed: stats.filter(s => s.status === 'COMPLETED').reduce((sum, s) => sum + s._count, 0),
-                inProgress: stats.filter(s => s.status === 'IN_PROGRESS').reduce((sum, s) => sum + s._count, 0),
+                completed: allUserAssignments.filter(a => a.status === 'COMPLETED').length,
+                inProgress: allUserAssignments.filter(a => a.status === 'IN_PROGRESS').length,
             },
             generatedAt: new Date(),
         };
@@ -1234,7 +1221,7 @@ export class ReportsService {
         const user = await this.prisma.user.findUnique({
             where: { id: userId },
             include: {
-                tenantProfile: true, // Just get the basic tenant profile
+                tenantProfile: true,
             }
         });
 
@@ -1246,11 +1233,11 @@ export class ReportsService {
             };
         }
 
-        // Get leases separately - they're linked directly to the user via tenantId
+        // Get leases - they're linked directly to the user via tenantId
         const activeLeases = await this.prisma.lease.findMany({
             where: {
                 tenantId: userId,
-                status: { in: ['ACTIVE'] }
+                status: { in: ['ACTIVE'] } // Only active, not expiring
             },
             include: {
                 space: {

@@ -120,7 +120,8 @@ model User {
   organization    Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   entities        Entity[]             @relation("UserEntities")
   properties      Property[]           @relation("UserProperties")
-  sentInvitations UserInvitation[] @relation("UserInvitations")
+  sentInvitations UserInvitation[]     @relation("UserInvitations")
+  maintenanceAssignments MaintenanceAssignment[] @relation("MaintenanceAssignments")
 
   @@map("users")
 }
@@ -383,14 +384,17 @@ model Vendor {
 model MaintenanceAssignment {
   id                 String             @id @default(cuid())
   maintenanceReqId   String
-  vendorId           String
+  vendorId           String?
+  assignedUserId     String?
   assignedAt         DateTime           @default(now())
   scheduledDate      DateTime?
   completedAt        DateTime?
   notes              String?
   cost               Decimal?           @db.Decimal(10, 2)
+  status             AssignmentStatus   @default(ASSIGNED)
   maintenanceRequest MaintenanceRequest @relation(fields: [maintenanceReqId], references: [id], onDelete: Cascade)
-  vendor             Vendor             @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  vendor             Vendor?            @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  assignedUser       User?              @relation("MaintenanceAssignments", fields: [assignedUserId], references: [id])
 
   @@map("maintenance_assignments")
 }
@@ -504,6 +508,13 @@ enum PaymentStatus {
 
 enum MaintenanceStatus {
   OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum AssignmentStatus {
+  ASSIGNED
   IN_PROGRESS
   COMPLETED
   CANCELLED
