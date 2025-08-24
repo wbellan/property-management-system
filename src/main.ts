@@ -7,9 +7,17 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { PrismaService } from './prisma/prisma.service';
 import { json, urlencoded } from 'express';
+import { join } from 'path';
+import { NestExpressApplication } from '@nestjs/platform-express';
 
 async function bootstrap() {
-    const app = await NestFactory.create(AppModule);
+    // const app = await NestFactory.create(AppModule);
+    const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+    // Serve static files from public directory
+    app.useStaticAssets(join(__dirname, '..', 'public'), {
+        prefix: '/',
+    });
 
     // Payload limits
     app.use(json({ limit: '10mb' })); // For JSON payloads
@@ -17,7 +25,7 @@ async function bootstrap() {
 
     // Security
     app.use(helmet());
-    console.log('process.env.FRONTEND_URL', process.env.FRONTEND_URL);
+
     // CORS
     app.enableCors({
         origin: process.env.FRONTEND_URL || 'http://localhost:3000',

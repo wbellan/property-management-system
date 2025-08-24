@@ -1,6 +1,8 @@
 // src/profile/profile.service.ts
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Injectable()
 export class ProfileService {
@@ -44,26 +46,78 @@ export class ProfileService {
         });
     }
 
-    async uploadProfilePhoto(userId: string, file: any) {
-        if (!file) {
-            throw new Error('No file provided');
+    async uploadProfilePhoto(userId: string, file: Express.Multer.File) {
+        if (!file) throw new BadRequestException('No file provided');
+
+        // With diskStorage, Multer already wrote the file.
+        // file.path is absolute; file.filename is the basename we set in Multer config.
+        const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'profiles');
+
+        // Ensure the dir exists (safe no-op if already exists)
+        if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
         }
 
-        // Simple file handling - save to public uploads folder
-        const photoUrl = `/uploads/profiles/${userId}_${Date.now()}.${file.originalname.split('.').pop()}`;
+        // If you set the filename in Multer using `${userId}_${Date.now()}${ext}`,
+        // you can trust file.filename here.
+        const finalFileName = file.filename || path.basename(file.path);
+        const photoUrl = `/uploads/profiles/${finalFileName}`;
 
         const updatedUser = await this.prisma.user.update({
             where: { id: userId },
-            data: { profilePhotoUrl: photoUrl }
+            data: { profilePhotoUrl: photoUrl },
         });
 
         return {
             profilePhotoUrl: updatedUser.profilePhotoUrl,
-            message: 'Photo uploaded successfully'
+            message: 'Photo uploaded successfully',
         };
     }
 
+    // async uploadProfilePhoto(userId: string, file: any) {
+    //     if (!file) {
+    //         throw new BadRequestException('No file provided');
+    //     }
+
+    //     // Create uploads directory if it doesn't exist
+    //     const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'profiles');
+    //     if (!fs.existsSync(uploadDir)) {
+    //         fs.mkdirSync(uploadDir, { recursive: true });
+    //     }
+
+    //     // Generate unique filename
+    //     const fileExtension = file.originalname.split('.').pop();
+    //     const fileName = `${userId}_${Date.now()}.${fileExtension}`;
+    //     const filePath = path.join(uploadDir, fileName);
+
+    //     // Save file to disk
+    //     fs.writeFileSync(filePath, file.buffer);
+
+    //     // Generate URL path
+    //     const photoUrl = `/uploads/profiles/${fileName}`;
+
+    //     const updatedUser = await this.prisma.user.update({
+    //         where: { id: userId },
+    //         data: { profilePhotoUrl: photoUrl }
+    //     });
+
+    //     return {
+    //         profilePhotoUrl: updatedUser.profilePhotoUrl,
+    //         message: 'Photo uploaded successfully'
+    //     };
+    // }
+
     async removeProfilePhoto(userId: string) {
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+
+        // Remove file from disk if it exists
+        if (user?.profilePhotoUrl) {
+            const filePath = path.join(process.cwd(), 'public', user.profilePhotoUrl);
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
+        }
+
         const updatedUser = await this.prisma.user.update({
             where: { id: userId },
             data: { profilePhotoUrl: null }
