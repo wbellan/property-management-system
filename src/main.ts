@@ -6,17 +6,23 @@ import helmet from 'helmet';
 
 import { AppModule } from './app.module';
 import { PrismaService } from './prisma/prisma.service';
+import { json, urlencoded } from 'express';
 
 async function bootstrap() {
     const app = await NestFactory.create(AppModule);
 
+    // Payload limits
+    app.use(json({ limit: '10mb' })); // For JSON payloads
+    app.use(urlencoded({ extended: true, limit: '10mb' })); // For form data
+
     // Security
     app.use(helmet());
-
+    console.log('process.env.FRONTEND_URL', process.env.FRONTEND_URL);
     // CORS
     app.enableCors({
         origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-        methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization'],
         credentials: true,
     });
 

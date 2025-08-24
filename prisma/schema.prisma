@@ -22,6 +22,8 @@ model Organization {
   tenants     Tenant[]
   users       User[]
   userInvitations UserInvitation[]
+  organizationSettings OrganizationSetting[]
+  passwordPolicy       PasswordPolicy?
 
   @@map("organizations")
 }
@@ -117,6 +119,20 @@ model User {
   tenantProfile   Tenant?
   userEntities    UserEntity[]
   userProperties  UserProperty[]
+  userSettings     UserSetting[]
+  settingsAudits   SettingsAudit[]
+  passwordHistory  PasswordHistory[]
+  title           String?    // Job title
+  department      String?    // Department/Division
+  bio             String?    // Personal bio
+  profilePhotoUrl String?    // Profile photo
+  phoneWork       String?    // Work phone (separate from personal)
+  phoneEmergency  String?    // Emergency contact
+  address         String?    // Personal address
+  dateOfBirth     DateTime?  // For age verification, lease requirements
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  startDate       DateTime?  // Employment/tenant start date
   organization    Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   entities        Entity[]             @relation("UserEntities")
   properties      Property[]           @relation("UserProperties")
@@ -442,6 +458,91 @@ model Tenant {
   user                  User?        @relation(fields: [userId], references: [id])
 
   @@map("tenants")
+}
+
+// User-specific settings (personal preferences)
+model UserSetting {
+  id           String   @id @default(cuid())
+  userId       String
+  settingKey   String   // e.g., 'theme', 'notifications', 'language'
+  settingValue String   // JSON string for complex values
+  category     String   // e.g., 'appearance', 'notifications', 'security'
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, settingKey])
+  @@map("user_settings")
+}
+
+// Organization-wide settings (admin-controlled)
+model OrganizationSetting {
+  id             String       @id @default(cuid())
+  organizationId String
+  settingKey     String       // e.g., 'maintenance_auto_assign', 'late_fee_policy'
+  settingValue   String       // JSON string for complex values
+  category       String       // e.g., 'billing', 'maintenance', 'security'
+  isUserEditable Boolean      @default(false) // Can regular users modify this?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  @@unique([organizationId, settingKey])
+  @@map("organization_settings")
+}
+
+// Audit trail for settings changes
+model SettingsAudit {
+  id             String       @id @default(cuid())
+  userId         String       // Who made the change
+  targetType     String       // 'USER' or 'ORGANIZATION'
+  targetId       String       // userId or organizationId
+  settingKey     String
+  oldValue       String?
+  newValue       String
+  action         String       // 'CREATE', 'UPDATE', 'DELETE'
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime     @default(now())
+  
+  user           User         @relation(fields: [userId], references: [id])
+  
+  @@map("settings_audit")
+}
+
+// Password complexity tracking
+model PasswordPolicy {
+  id             String       @id @default(cuid())
+  organizationId String       @unique
+  minLength      Int          @default(8)
+  requireUpper   Boolean      @default(true)
+  requireLower   Boolean      @default(true)
+  requireNumbers Boolean      @default(true)
+  requireSymbols Boolean      @default(false)
+  maxAge         Int?         // Days before password expires
+  historyCount   Int          @default(5) // Can't reuse last N passwords
+  lockoutAttempts Int         @default(5)
+  lockoutDuration Int         @default(30) // Minutes
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  @@map("password_policies")
+}
+
+// Password history for preventing reuse
+model PasswordHistory {
+  id           String   @id @default(cuid())
+  userId       String
+  passwordHash String
+  createdAt    DateTime @default(now())
+  
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("password_history")
 }
 
 enum UserRole {

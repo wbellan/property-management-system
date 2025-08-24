@@ -19,6 +19,8 @@ import { ReportsModule } from './reports/reports.module';
 import { TenantsModule } from './tenants/tenants.module';
 import { EmailModule } from './email/email.module';
 import { TasksModule } from './tasks/tasks.module';
+import { SettingsModule } from './settings/settings.module';
+import { ProfileModule } from './profile/profile.module';
 
 @Module({
     imports: [
@@ -52,7 +54,9 @@ import { TasksModule } from './tasks/tasks.module';
         ReportsModule,
         TenantsModule,
         EmailModule,
-        TasksModule
+        TasksModule,
+        SettingsModule,
+        ProfileModule
     ],
     providers: [
         {
