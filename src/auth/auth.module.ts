@@ -8,10 +8,13 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { RolesGuard } from './guards/roles.guard';
+import { PrismaModule } from 'src/prisma/prisma.module';
+import { PasswordValidatorService } from './password-validator.service';
 
 @Module({
     imports: [
         PassportModule,
+        PrismaModule,
         JwtModule.registerAsync({
             imports: [ConfigModule],
             useFactory: async (configService: ConfigService) => ({
@@ -24,7 +27,12 @@ import { RolesGuard } from './guards/roles.guard';
         }),
     ],
     controllers: [AuthController],
-    providers: [AuthService, JwtStrategy, RolesGuard],
-    exports: [AuthService, JwtStrategy, RolesGuard],
+    providers: [
+        AuthService,
+        JwtStrategy,
+        RolesGuard,
+        PasswordValidatorService
+    ],
+    exports: [AuthService, JwtStrategy, RolesGuard, PasswordValidatorService],
 })
 export class AuthModule { }

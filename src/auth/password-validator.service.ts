@@ -1,6 +1,9 @@
 // src/auth/password-validator.service.ts
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
+import * as bcrypt from 'bcryptjs';
 
+@Injectable()
 export class PasswordValidatorService {
     constructor(private prisma: PrismaService) { }
 
@@ -69,8 +72,8 @@ export class PasswordValidatorService {
 
         // Check if new password matches any recent password
         for (const oldPassword of recentPasswords) {
-            const bcrypt = await import('bcrypt');
-            if (await bcrypt.compare(newPasswordHash, oldPassword.passwordHash)) {
+            // Use bcrypt to compare the new password against stored hashes
+            if (await bcrypt.compare(newPassword, oldPassword.passwordHash)) {
                 return false; // Password was used recently
             }
         }

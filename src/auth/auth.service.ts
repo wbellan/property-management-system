@@ -14,6 +14,7 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
+import { PasswordValidatorService } from './password-validator.service';
 
 @Injectable()
 export class AuthService {
@@ -21,6 +22,7 @@ export class AuthService {
         private prisma: PrismaService,
         private jwtService: JwtService,
         private configService: ConfigService,
+        private passwordValidator: PasswordValidatorService
     ) { }
 
     async register(registerDto: RegisterDto) {
@@ -150,7 +152,7 @@ export class AuthService {
                 role: user.role,
                 organizationId: user.organizationId,
                 organization: user.organization,
-                entities: user.entities,      
+                entities: user.entities,
                 properties: user.properties
             },
         };
@@ -245,10 +247,11 @@ export class AuthService {
         }
     }
 
-    async changePassword(userId: string, changePasswordDto: ChangePasswordDto) {
+    async changePassword(userId: string, currentPassword: string, newPassword: string) {
         // Get user
         const user = await this.prisma.user.findUnique({
             where: { id: userId },
+            include: { organization: true }
         });
 
         if (!user) {
@@ -256,26 +259,80 @@ export class AuthService {
         }
 
         // Verify current password
-        const isCurrentPasswordValid = await bcrypt.compare(
-            changePasswordDto.currentPassword,
-            user.passwordHash,
+        const isValidPassword = await bcrypt.compare(currentPassword, user.passwordHash);
+        if (!isValidPassword) {
+            throw new BadRequestException('Current password is incorrect');
+        }
+
+        // Validate new password against policy
+        const validation = await this.passwordValidator.validatePassword(
+            newPassword,
+            user.organizationId
         );
 
-        if (!isCurrentPasswordValid) {
-            throw new UnauthorizedException('Current password is incorrect');
+        if (!validation.isValid) {
+            throw new BadRequestException(validation.errors.join(', '));
+        }
+
+        // Check password history
+        const canReuse = await this.passwordValidator.checkPasswordHistory(
+            userId,
+            newPassword,
+            user.organizationId
+        );
+
+        if (!canReuse) {
+            throw new BadRequestException('Cannot reuse recent passwords');
         }
 
         // Hash new password
-        const hashedNewPassword = await bcrypt.hash(changePasswordDto.newPassword, 12);
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-        // Update password
-        await this.prisma.user.update({
-            where: { id: userId },
-            data: { passwordHash: hashedNewPassword },
+        // Add old password to history
+        await this.prisma.passwordHistory.create({
+            data: {
+                userId,
+                passwordHash: user.passwordHash
+            }
         });
 
-        return { message: 'Password changed successfully' };
+        // Update user password
+        return this.prisma.user.update({
+            where: { id: userId },
+            data: { passwordHash: hashedPassword }
+        });
     }
+    // async changePassword(userId: string, changePasswordDto: ChangePasswordDto) {
+    //     // Get user
+    //     const user = await this.prisma.user.findUnique({
+    //         where: { id: userId },
+    //     });
+
+    //     if (!user) {
+    //         throw new UnauthorizedException('User not found');
+    //     }
+
+    //     // Verify current password
+    //     const isCurrentPasswordValid = await bcrypt.compare(
+    //         changePasswordDto.currentPassword,
+    //         user.passwordHash,
+    //     );
+
+    //     if (!isCurrentPasswordValid) {
+    //         throw new UnauthorizedException('Current password is incorrect');
+    //     }
+
+    //     // Hash new password
+    //     const hashedNewPassword = await bcrypt.hash(changePasswordDto.newPassword, 12);
+
+    //     // Update password
+    //     await this.prisma.user.update({
+    //         where: { id: userId },
+    //         data: { passwordHash: hashedNewPassword },
+    //     });
+
+    //     return { message: 'Password changed successfully' };
+    // }
 
     async getUserProfile(userId: string) {
         const user = await this.prisma.user.findUnique({

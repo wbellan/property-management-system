@@ -1,73 +1,33 @@
-import { Body, Controller, Get, Param, Post, Put, Query, Req, UseGuards } from "@nestjs/common";
-import { JwtAuthGuard } from "src/auth/guards/jwt-auth.guard";
-import { RolesGuard } from "src/auth/guards/roles.guard";
-import { CurrentUser } from "src/common/decorators/current-user.decorator";
-import { Roles } from "src/common/decorators/roles.decorator";
-import { SettingsAuditService } from "./settings-audit.service";
-import { SettingsService } from "./settings.service";
+import { Controller, Get, Put, Param, Body, UseGuards, Req } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { UserRole } from '@prisma/client';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { SettingsService } from './settings.service';
+import { SettingsAuditService } from './settings-audit.service';
+import { AuthService } from '../auth/auth.service'; // Import existing auth service
 
-// src/settings/settings.controller.ts
+@ApiTags('Settings')
 @Controller('settings')
 @UseGuards(JwtAuthGuard)
 export class SettingsController {
     constructor(
         private settingsService: SettingsService,
-        private auditService: SettingsAuditService
+        private auditService: SettingsAuditService,
+        private authService: AuthService // Use existing auth service
     ) { }
 
-    @Get('profile')
-    async getProfile(@CurrentUser() user: any) {
-        return this.settingsService.getUserProfile(user.userId);
-    }
-
-    @Put('profile')
-    async updateProfile(
-        @CurrentUser() user: any,
-        @Body() profileData: any,
-        @Req() request: any
-    ) {
-        const result = await this.settingsService.updateUserProfile(user.userId, profileData);
-
-        // Audit trail
-        await this.auditService.logProfileChange(
-            user.userId,
-            profileData,
-            request.ip,
-            request.headers['user-agent']
-        );
-
-        return result;
-    }
-
-    @Post('change-password')
-    async changePassword(
-        @CurrentUser() user: any,
-        @Body() { currentPassword, newPassword }: { currentPassword: string; newPassword: string },
-        @Req() request: any
-    ) {
-        const result = await this.settingsService.changePassword(
-            user.userId,
-            currentPassword,
-            newPassword,
-            user.organizationId
-        );
-
-        // Audit trail
-        await this.auditService.logPasswordChange(
-            user.userId,
-            request.ip,
-            request.headers['user-agent']
-        );
-
-        return result;
-    }
-
+    // ============= USER SETTINGS =============
     @Get('preferences')
+    @ApiOperation({ summary: 'Get user preferences' })
     async getUserSettings(@CurrentUser() user: any) {
         return this.settingsService.getUserSettings(user.userId);
     }
 
     @Put('preferences/:category/:key')
+    @ApiOperation({ summary: 'Update user setting' })
     async updateUserSetting(
         @CurrentUser() user: any,
         @Param('category') category: string,
@@ -94,19 +54,22 @@ export class SettingsController {
             request.headers['user-agent']
         );
 
-        return result;
+        return { success: true, data: result };
     }
 
+    // ============= ORGANIZATION SETTINGS =============
     @Get('organization')
     @UseGuards(RolesGuard)
-    @Roles('ORG_ADMIN', 'ENTITY_MANAGER')
+    @Roles(UserRole.ORG_ADMIN, UserRole.ENTITY_MANAGER)
+    @ApiOperation({ summary: 'Get organization settings' })
     async getOrganizationSettings(@CurrentUser() user: any) {
         return this.settingsService.getOrganizationSettings(user.organizationId, user.role);
     }
 
     @Put('organization/:category/:key')
     @UseGuards(RolesGuard)
-    @Roles('ORG_ADMIN', 'SUPER_ADMIN')
+    @Roles(UserRole.ORG_ADMIN, UserRole.SUPER_ADMIN)
+    @ApiOperation({ summary: 'Update organization setting' })
     async updateOrganizationSetting(
         @CurrentUser() user: any,
         @Param('category') category: string,
@@ -133,17 +96,31 @@ export class SettingsController {
             request.headers['user-agent']
         );
 
-        return result;
+        return { success: true, data: result };
     }
 
-    @Get('audit')
-    @UseGuards(RolesGuard)
-    @Roles('ORG_ADMIN', 'SUPER_ADMIN')
-    async getAuditTrail(
+    // ============= PASSWORD CHANGE - USE AUTH SERVICE =============
+    @Put('change-password')
+    @ApiOperation({ summary: 'Change user password' })
+    async changePassword(
         @CurrentUser() user: any,
-        @Query('page') page: number = 1,
-        @Query('limit') limit: number = 50
+        @Body() { currentPassword, newPassword }: { currentPassword: string; newPassword: string },
+        @Req() request: any
     ) {
-        return this.auditService.getAuditTrail(user.organizationId, page, limit);
+        // Use existing auth service method instead of duplicating logic
+        const result = await this.authService.changePassword(
+            user.userId,
+            currentPassword,
+            newPassword
+        );
+
+        // Audit trail
+        await this.auditService.logPasswordChange(
+            user.userId,
+            request.ip,
+            request.headers['user-agent']
+        );
+
+        return { success: true, message: 'Password changed successfully' };
     }
 }

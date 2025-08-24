@@ -6,15 +6,18 @@ import { SettingsAuditService } from './settings-audit.service';
 import { DefaultSettingsService } from './default-settings.service';
 import { PasswordValidatorService } from 'src/auth/password-validator.service';
 import { PrismaModule } from '../prisma/prisma.module';
+import { AuthModule } from 'src/auth/auth.module';
 
 @Module({
-    imports: [PrismaModule],
+    imports: [
+        PrismaModule,
+        AuthModule
+    ],
     controllers: [SettingsController],
     providers: [
         SettingsService,
         SettingsAuditService,
-        DefaultSettingsService,
-        PasswordValidatorService
+        DefaultSettingsService
     ],
     exports: [SettingsService, SettingsAuditService, DefaultSettingsService]
 })
