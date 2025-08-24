@@ -15,7 +15,7 @@ export class TenantsController {
 
     @Post()
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(UserRole.ORG_ADMIN, UserRole.ENTITY_MANAGER, UserRole.PROPERTY_MANAGER)
+    @Roles(UserRole.SUPER_ADMIN, UserRole.ORG_ADMIN, UserRole.ENTITY_MANAGER, UserRole.PROPERTY_MANAGER)
     @ApiOperation({ summary: 'Create a new tenant' })
     async createTenant(
         @CurrentUser() currentUser: any,
@@ -26,7 +26,7 @@ export class TenantsController {
 
     @Get('organization/:organizationId')
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(UserRole.ORG_ADMIN, UserRole.ENTITY_MANAGER, UserRole.PROPERTY_MANAGER)
+    @Roles(UserRole.SUPER_ADMIN, UserRole.ORG_ADMIN, UserRole.ENTITY_MANAGER, UserRole.PROPERTY_MANAGER)
     async getTenantsInOrganization(
         @Param('organizationId') organizationId: string,
         @Query('page') page = 1,
@@ -43,7 +43,7 @@ export class TenantsController {
 
     @Put(':tenantId')
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(UserRole.ORG_ADMIN, UserRole.ENTITY_MANAGER, UserRole.PROPERTY_MANAGER)
+    @Roles(UserRole.SUPER_ADMIN, UserRole.ORG_ADMIN, UserRole.ENTITY_MANAGER, UserRole.PROPERTY_MANAGER)
     async updateTenant(
         @Param('tenantId') tenantId: string,
         @Body() updates: any
@@ -53,14 +53,14 @@ export class TenantsController {
 
     @Post(':tenantId/enable-portal')
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(UserRole.ORG_ADMIN, UserRole.ENTITY_MANAGER, UserRole.PROPERTY_MANAGER)
+    @Roles(UserRole.SUPER_ADMIN, UserRole.ORG_ADMIN, UserRole.ENTITY_MANAGER, UserRole.PROPERTY_MANAGER)
     async enablePortalAccess(@Param('tenantId') tenantId: string) {
         return this.tenantsService.enablePortalAccess(tenantId);
     }
 
     @Post(':tenantId/disable-portal')
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(UserRole.ORG_ADMIN, UserRole.ENTITY_MANAGER, UserRole.PROPERTY_MANAGER)
+    @Roles(UserRole.SUPER_ADMIN, UserRole.ORG_ADMIN, UserRole.ENTITY_MANAGER, UserRole.PROPERTY_MANAGER)
     async disablePortalAccess(@Param('tenantId') tenantId: string) {
         return this.tenantsService.disablePortalAccess(tenantId);
     }

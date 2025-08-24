@@ -190,16 +190,6 @@ export class UsersController {
         );
     }
 
-    // @Put(':userId/access')
-    // @UseGuards(JwtAuthGuard, RolesGuard)
-    // @Roles(UserRole.ORG_ADMIN)
-    // async updateUserAccess(
-    //     @Param('userId') userId: string,
-    //     @Body() updates: any
-    // ) {
-    //     return this.usersService.updateUserAccess(userId, updates);
-    // }
-
     /**
        * Resend invitation
        */
@@ -237,7 +227,7 @@ export class UsersController {
 
     @Put(':userId/deactivate')
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(UserRole.ORG_ADMIN)
+    @Roles(UserRole.SUPER_ADMIN, UserRole.ORG_ADMIN)
     async deactivateUser(@Param('userId') userId: string) {
         return this.usersService.deactivateUser(userId);
     }
