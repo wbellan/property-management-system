@@ -74,39 +74,6 @@ export class ProfileService {
         };
     }
 
-    // async uploadProfilePhoto(userId: string, file: any) {
-    //     if (!file) {
-    //         throw new BadRequestException('No file provided');
-    //     }
-
-    //     // Create uploads directory if it doesn't exist
-    //     const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'profiles');
-    //     if (!fs.existsSync(uploadDir)) {
-    //         fs.mkdirSync(uploadDir, { recursive: true });
-    //     }
-
-    //     // Generate unique filename
-    //     const fileExtension = file.originalname.split('.').pop();
-    //     const fileName = `${userId}_${Date.now()}.${fileExtension}`;
-    //     const filePath = path.join(uploadDir, fileName);
-
-    //     // Save file to disk
-    //     fs.writeFileSync(filePath, file.buffer);
-
-    //     // Generate URL path
-    //     const photoUrl = `/uploads/profiles/${fileName}`;
-
-    //     const updatedUser = await this.prisma.user.update({
-    //         where: { id: userId },
-    //         data: { profilePhotoUrl: photoUrl }
-    //     });
-
-    //     return {
-    //         profilePhotoUrl: updatedUser.profilePhotoUrl,
-    //         message: 'Photo uploaded successfully'
-    //     };
-    // }
-
     async removeProfilePhoto(userId: string) {
         const user = await this.prisma.user.findUnique({ where: { id: userId } });
 
