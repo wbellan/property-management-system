@@ -55,7 +55,7 @@ export class PasswordValidatorService {
         };
     }
 
-    async checkPasswordHistory(userId: string, newPasswordHash: string, organizationId: string): Promise<boolean> {
+    async checkPasswordHistory(userId: string, newPassword: string, organizationId: string): Promise<boolean> {
         const policy = await this.prisma.passwordPolicy.findUnique({
             where: { organizationId }
         });

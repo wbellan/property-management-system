@@ -84,7 +84,7 @@ export class AuthController {
         @CurrentUser('userId') userId: string,
         @Body() changePasswordDto: ChangePasswordDto,
     ) {
-        return this.authService.changePassword(userId, changePasswordDto);
+        return this.authService.changePassword(userId, changePasswordDto.currentPassword, changePasswordDto.newPassword);
     }
 
     // Admin endpoints
