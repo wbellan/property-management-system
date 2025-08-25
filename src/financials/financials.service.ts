@@ -616,7 +616,7 @@ export class FinancialsService {
         { description: { contains: search, mode: 'insensitive' } },
         { lease: { tenant: { firstName: { contains: search, mode: 'insensitive' } } } },
         { lease: { tenant: { lastName: { contains: search, mode: 'insensitive' } } } },
-        { lease: { space: { unitNumber: { contains: search, mode: 'insensitive' } } } },
+        { lease: { space: { name: { contains: search, mode: 'insensitive' } } } },
       ];
     }
 
@@ -1229,7 +1229,7 @@ export class FinancialsService {
       },
       orderBy: [
         { space: { property: { name: 'asc' } } },
-        { space: { unitNumber: 'asc' } },
+        { space: { name: 'asc' } },
       ],
     });
 
@@ -1368,7 +1368,7 @@ export class FinancialsService {
             amount: Number(lease.monthlyRent) + Number(lease.nnnExpenses || 0),
             dueDate,
             status: 'DRAFT',
-            description: `Monthly rent for ${lease.space.property.name} - Unit ${lease.space.unitNumber}`,
+            description: `Monthly rent for ${lease.space.property.name} - Unit ${lease.space.name}`,
             notes: 'Monthly rent invoice',
           },
           include: {

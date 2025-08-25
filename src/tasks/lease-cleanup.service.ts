@@ -50,7 +50,7 @@ export class LeaseCleanupService {
                 });
 
                 updatedLeases.forEach(lease => {
-                    this.logger.log(`Expired lease: ${lease.space.property.name} - ${lease.space.unitNumber} (${lease.tenant.firstName} ${lease.tenant.lastName})`);
+                    this.logger.log(`Expired lease: ${lease.space.property.name} - ${lease.space.name} (${lease.tenant.firstName} ${lease.tenant.lastName})`);
                 });
             }
         } catch (error) {

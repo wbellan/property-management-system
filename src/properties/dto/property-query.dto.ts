@@ -2,7 +2,7 @@
 import { IsOptional, IsString, IsInt, Min, IsEnum } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
-import { PropertyType } from './create-property.dto';
+import { PropertyType } from '@prisma/client';
 
 export class PropertyQueryDto {
     @ApiProperty({ required: false, example: 1 })

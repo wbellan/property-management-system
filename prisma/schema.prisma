@@ -8,20 +8,21 @@ datasource db {
 }
 
 model Organization {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  address     String?
-  phone       String?
-  email       String?
-  website     String?
-  logoUrl     String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  entities    Entity[]
-  tenants     Tenant[]
-  users       User[]
-  userInvitations UserInvitation[]
+  id                   String                 @id @default(cuid())
+  name                 String
+  description          String?
+  address              String?
+  phone                String?
+  email                String?
+  website              String?
+  logoUrl              String?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  
+  entities             Entity[]
+  tenants              Tenant[]
+  users                User[]
+  userInvitations      UserInvitation[]
   organizationSettings OrganizationSetting[]
   passwordPolicy       PasswordPolicy?
 
@@ -40,6 +41,7 @@ model Entity {
   organizationId String
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
+  
   bankLedgers    BankLedger[]
   chartAccounts  ChartOfAccount[]
   organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -52,92 +54,121 @@ model Entity {
 }
 
 model Property {
-  id               String               @id @default(cuid())
-  name             String
-  address          String
-  city             String
-  state            String
-  zipCode          String
-  propertyType     String?
-  totalUnits       Int                  @default(0)
-  yearBuilt        Int?
-  squareFeet       Int?
-  description      String?
-  entityId         String
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
-  maintenanceReqs  MaintenanceRequest[]
-  entity           Entity               @relation(fields: [entityId], references: [id], onDelete: Cascade)
-  propertyExpenses PropertyExpense[]
-  spaces           Space[]
-  userProperties   UserProperty[]
-  users            User[]               @relation("UserProperties")
+  id                  String               @id @default(cuid())
+  name                String
+  address             String
+  city                String
+  state               String
+  zipCode             String
+  propertyType        PropertyType         @default(RESIDENTIAL)
+  description         String?
+  totalSpaces         Int                  @default(1)
+  
+  // Financial Fields
+  purchasePrice       Decimal?             @db.Decimal(12, 2)
+  currentMarketValue  Decimal?             @db.Decimal(12, 2)
+  
+  // Property Details
+  yearBuilt           Int?
+  squareFootage       Int?
+  lotSize             Int?
+  
+  entityId            String
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  
+  maintenanceReqs     MaintenanceRequest[]
+  entity              Entity               @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  propertyExpenses    PropertyExpense[]
+  spaces              Space[]
+  leases              Lease[]
+  userProperties      UserProperty[]
+  images              PropertyImage[]    
+  users               User[]               @relation("UserProperties")
 
+  @@index([entityId])
+  @@index([propertyType])
+  @@index([city, state])
   @@map("properties")
 }
 
 model Space {
   id              String               @id @default(cuid())
-  unitNumber      String
-  floor           Int?
-  spaceType       String?
+  name            String               // Unit identifier (e.g., "Unit 2A")
+  type            SpaceType            @default(UNIT)
+  status          SpaceStatus          @default(AVAILABLE)
+  
+  // Space Details
+  squareFootage   Int?
   bedrooms        Int?
-  bathrooms       Decimal?
-  squareFeet      Int?
+  bathrooms       Decimal?             @db.Decimal(3, 1)
+  rent            Decimal?             @db.Decimal(10, 2)
+  deposit         Decimal?             @db.Decimal(10, 2)
   description     String?
+  amenities       String?              // JSON string of amenities
+  floorNumber     Int?
+  
   propertyId      String
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
+  
   leases          Lease[]
   maintenanceReqs MaintenanceRequest[]
   property        Property             @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  spaceImages     SpaceImage[]
 
-  @@unique([propertyId, unitNumber])
+  @@index([propertyId])
+  @@index([status])
+  @@index([type])
   @@map("spaces")
 }
 
 model User {
-  id              String               @id @default(cuid())
-  email           String               @unique
-  passwordHash    String
-  firstName       String
-  lastName        String
-  phone           String?
-  role            UserRole             @default(TENANT)
-  status          UserStatus           @default(PENDING)
-  organizationId  String
-  lastLoginAt     DateTime?
-  createdAt       DateTime             @default(now())
-  updatedAt       DateTime             @updatedAt
-  emailVerified   Boolean              @default(false)
-  inviteExpires   DateTime?
-  inviteToken     String?              @unique
-  invitedBy       String?
-  leases          Lease[]
-  ledgerEntries   LedgerEntry[]
-  maintenanceReqs MaintenanceRequest[]
-  tenantProfile   Tenant?
-  userEntities    UserEntity[]
-  userProperties  UserProperty[]
-  userSettings     UserSetting[]
-  settingsAudits   SettingsAudit[]
-  passwordHistory  PasswordHistory[]
-  title           String?    // Job title
-  department      String?    // Department/Division
-  bio             String?    // Personal bio
-  profilePhotoUrl String?    // Profile photo
-  phoneWork       String?    // Work phone (separate from personal)
-  phoneEmergency  String?    // Emergency contact
-  address         String?    // Personal address
-  dateOfBirth     DateTime?  // For age verification, lease requirements
-  emergencyContactName  String?
-  emergencyContactPhone String?
-  startDate       DateTime?  // Employment/tenant start date
-  organization    Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  entities        Entity[]             @relation("UserEntities")
-  properties      Property[]           @relation("UserProperties")
-  sentInvitations UserInvitation[]     @relation("UserInvitations")
+  id                     String                 @id @default(cuid())
+  email                  String                 @unique
+  passwordHash           String
+  firstName              String
+  lastName               String
+  phone                  String?
+  role                   UserRole               @default(TENANT)
+  status                 UserStatus             @default(PENDING)
+  organizationId         String
+  lastLoginAt            DateTime?
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+  emailVerified          Boolean                @default(false)
+  inviteExpires          DateTime?
+  inviteToken            String?                @unique
+  invitedBy              String?
+  
+  // Profile fields
+  title                  String?
+  department             String?
+  bio                    String?
+  profilePhotoUrl        String?
+  phoneWork              String?
+  phoneEmergency         String?
+  address                String?
+  dateOfBirth            DateTime?
+  emergencyContactName   String?
+  emergencyContactPhone  String?
+  startDate              DateTime?
+  
+  leases                 Lease[]
+  ledgerEntries          LedgerEntry[]
+  maintenanceReqs        MaintenanceRequest[]
+  tenantProfile          Tenant?
+  userEntities           UserEntity[]
+  userProperties         UserProperty[]
+  userSettings           UserSetting[]
+  settingsAudits         SettingsAudit[]
+  passwordHistory        PasswordHistory[]
   maintenanceAssignments MaintenanceAssignment[] @relation("MaintenanceAssignments")
+  
+  organization           Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  entities               Entity[]               @relation("UserEntities")
+  properties             Property[]             @relation("UserProperties")
+  sentInvitations        UserInvitation[]       @relation("UserInvitations")
 
   @@map("users")
 }
@@ -147,6 +178,7 @@ model UserEntity {
   userId    String
   entityId  String
   createdAt DateTime @default(now())
+  
   entity    Entity   @relation(fields: [entityId], references: [id], onDelete: Cascade)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -159,6 +191,7 @@ model UserProperty {
   userId     String
   propertyId String
   createdAt  DateTime @default(now())
+  
   property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -182,7 +215,6 @@ model UserInvitation {
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
 
-  // Relations
   organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   invitedBy       User             @relation("UserInvitations", fields: [invitedById], references: [id])
 
@@ -196,25 +228,33 @@ model UserInvitation {
 model Lease {
   id                String         @id @default(cuid())
   spaceId           String
+  propertyId        String
   tenantId          String
   startDate         DateTime
   endDate           DateTime
   monthlyRent       Decimal        @db.Decimal(10, 2)
   securityDeposit   Decimal        @db.Decimal(10, 2)
-  status            LeaseStatus    @default(DRAFT)
-  leaseTerms        String?
+  status            LeaseStatus    @default(ACTIVE)
+  renewalTerms      String?
+  specialTerms      String?
   nnnExpenses       Decimal?       @db.Decimal(10, 2)
   utilitiesIncluded Boolean        @default(false)
   petDeposit        Decimal?       @db.Decimal(10, 2)
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
+  
   invoices          Invoice[]
   leaseRenewals     LeaseRenewal[]
   space             Space          @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  property          Property       @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   tenant            User           @relation(fields: [tenantId], references: [id])
   rentIncreases     RentIncrease[]
   rentPayments      RentPayment[]
 
+  @@index([spaceId])
+  @@index([propertyId])
+  @@index([tenantId])
+  @@index([status])
   @@map("leases")
 }
 
@@ -225,6 +265,7 @@ model LeaseRenewal {
   newMonthlyRent Decimal  @db.Decimal(10, 2)
   renewedAt      DateTime @default(now())
   notes          String?
+  
   lease          Lease    @relation(fields: [leaseId], references: [id], onDelete: Cascade)
 
   @@map("lease_renewals")
@@ -240,6 +281,7 @@ model RentIncrease {
   effectiveDate   DateTime
   reason          String?
   createdAt       DateTime @default(now())
+  
   lease           Lease    @relation(fields: [leaseId], references: [id], onDelete: Cascade)
 
   @@map("rent_increases")
@@ -255,6 +297,7 @@ model ChartOfAccount {
   isActive      Boolean       @default(true)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
+  
   entity        Entity        @relation(fields: [entityId], references: [id], onDelete: Cascade)
   ledgerEntries LedgerEntry[]
 
@@ -273,6 +316,7 @@ model BankLedger {
   isActive       Boolean       @default(true)
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
+  
   entity         Entity        @relation(fields: [entityId], references: [id], onDelete: Cascade)
   ledgerEntries  LedgerEntry[]
 
@@ -293,6 +337,7 @@ model LedgerEntry {
   createdById     String
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
+  
   bankLedger      BankLedger      @relation(fields: [bankLedgerId], references: [id])
   chartAccount    ChartOfAccount  @relation(fields: [chartAccountId], references: [id])
   createdBy       User            @relation(fields: [createdById], references: [id])
@@ -312,6 +357,7 @@ model Invoice {
   notes         String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
+  
   lease         Lease         @relation(fields: [leaseId], references: [id], onDelete: Cascade)
   payments      Payment[]
 
@@ -329,6 +375,7 @@ model Payment {
   notes           String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
+  
   invoice         Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   @@map("payments")
@@ -348,6 +395,7 @@ model RentPayment {
   notes           String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
+  
   lease           Lease         @relation(fields: [leaseId], references: [id], onDelete: Cascade)
 
   @@map("rent_payments")
@@ -368,6 +416,7 @@ model MaintenanceRequest {
   completedAt   DateTime?
   createdAt     DateTime                @default(now())
   updatedAt     DateTime                @updatedAt
+  
   assignments   MaintenanceAssignment[]
   property      Property                @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   space         Space?                  @relation(fields: [spaceId], references: [id])
@@ -391,6 +440,7 @@ model Vendor {
   entityId               String
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
+  
   maintenanceAssignments MaintenanceAssignment[]
   entity                 Entity                  @relation(fields: [entityId], references: [id], onDelete: Cascade)
 
@@ -408,6 +458,7 @@ model MaintenanceAssignment {
   notes              String?
   cost               Decimal?           @db.Decimal(10, 2)
   status             AssignmentStatus   @default(ASSIGNED)
+  
   maintenanceRequest MaintenanceRequest @relation(fields: [maintenanceReqId], references: [id], onDelete: Cascade)
   vendor             Vendor?            @relation(fields: [vendorId], references: [id], onDelete: Cascade)
   assignedUser       User?              @relation("MaintenanceAssignments", fields: [assignedUserId], references: [id])
@@ -427,6 +478,7 @@ model PropertyExpense {
   allocateToTenants Boolean     @default(false)
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
+  
   property          Property    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
 
   @@map("property_expenses")
@@ -454,19 +506,19 @@ model Tenant {
   notes                 String?
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
+  
   organization          Organization @relation(fields: [organizationId], references: [id])
   user                  User?        @relation(fields: [userId], references: [id])
 
   @@map("tenants")
 }
 
-// User-specific settings (personal preferences)
 model UserSetting {
   id           String   @id @default(cuid())
   userId       String
-  settingKey   String   // e.g., 'theme', 'notifications', 'language'
-  settingValue String   // JSON string for complex values
-  category     String   // e.g., 'appearance', 'notifications', 'security'
+  settingKey   String
+  settingValue String
+  category     String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   
@@ -476,14 +528,13 @@ model UserSetting {
   @@map("user_settings")
 }
 
-// Organization-wide settings (admin-controlled)
 model OrganizationSetting {
   id             String       @id @default(cuid())
   organizationId String
-  settingKey     String       // e.g., 'maintenance_auto_assign', 'late_fee_policy'
-  settingValue   String       // JSON string for complex values
-  category       String       // e.g., 'billing', 'maintenance', 'security'
-  isUserEditable Boolean      @default(false) // Can regular users modify this?
+  settingKey     String
+  settingValue   String
+  category       String
+  isUserEditable Boolean      @default(false)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   
@@ -493,16 +544,15 @@ model OrganizationSetting {
   @@map("organization_settings")
 }
 
-// Audit trail for settings changes
 model SettingsAudit {
   id             String       @id @default(cuid())
-  userId         String       // Who made the change
-  targetType     String       // 'USER' or 'ORGANIZATION'
-  targetId       String       // userId or organizationId
+  userId         String
+  targetType     String
+  targetId       String
   settingKey     String
   oldValue       String?
   newValue       String
-  action         String       // 'CREATE', 'UPDATE', 'DELETE'
+  action         String
   ipAddress      String?
   userAgent      String?
   createdAt      DateTime     @default(now())
@@ -512,7 +562,6 @@ model SettingsAudit {
   @@map("settings_audit")
 }
 
-// Password complexity tracking
 model PasswordPolicy {
   id             String       @id @default(cuid())
   organizationId String       @unique
@@ -521,10 +570,10 @@ model PasswordPolicy {
   requireLower   Boolean      @default(true)
   requireNumbers Boolean      @default(true)
   requireSymbols Boolean      @default(false)
-  maxAge         Int?         // Days before password expires
-  historyCount   Int          @default(5) // Can't reuse last N passwords
+  maxAge         Int?
+  historyCount   Int          @default(5)
   lockoutAttempts Int         @default(5)
-  lockoutDuration Int         @default(30) // Minutes
+  lockoutDuration Int         @default(30)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   
@@ -533,7 +582,6 @@ model PasswordPolicy {
   @@map("password_policies")
 }
 
-// Password history for preventing reuse
 model PasswordHistory {
   id           String   @id @default(cuid())
   userId       String
@@ -543,6 +591,42 @@ model PasswordHistory {
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   
   @@map("password_history")
+}
+
+model PropertyImage {
+  id                  String             @id @default(cuid())
+  propertyId          String
+  url                 String
+  filename            String
+  mimeType            String
+  size                Int
+  caption             String?
+  isPrimary           Boolean            @default(false)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  property            Property           @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId])
+  @@map("property_images")
+}
+
+model SpaceImage {
+  id                  String             @id @default(cuid())
+  spaceId             String
+  url                 String
+  filename            String
+  mimeType            String
+  size                Int
+  caption             String?
+  isPrimary           Boolean            @default(false)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  space               Space              @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+
+  @@index([spaceId])
+  @@map("space_images")
 }
 
 enum UserRole {
@@ -568,6 +652,38 @@ enum LeaseStatus {
   EXPIRED
   TERMINATED
   RENEWED
+}
+
+enum PropertyType {
+  RESIDENTIAL
+  COMMERCIAL
+  MIXED_USE
+  INDUSTRIAL
+  RETAIL
+  OFFICE
+  WAREHOUSE
+  LAND
+}
+
+enum SpaceType {
+  UNIT
+  APARTMENT
+  OFFICE
+  RETAIL
+  WAREHOUSE
+  PARKING
+  STORAGE
+  COMMON_AREA
+  AMENITY
+  OTHER
+}
+
+enum SpaceStatus {
+  AVAILABLE
+  OCCUPIED
+  MAINTENANCE
+  RESERVED
+  UNAVAILABLE
 }
 
 enum TransactionType {

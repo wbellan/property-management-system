@@ -2,7 +2,7 @@
 import { IsOptional, IsString, IsInt, Min, IsEnum, IsBoolean } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
-import { SpaceType } from './create-space.dto';
+import { SpaceType } from '@prisma/client';
 
 export class SpaceQueryDto {
     @ApiProperty({ required: false, example: 1 })

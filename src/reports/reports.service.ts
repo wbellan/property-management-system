@@ -274,7 +274,7 @@ export class ReportsService {
             },
             orderBy: [
                 { property: { name: 'asc' } },
-                { unitNumber: 'asc' }, // Use unitNumber instead of name
+                { name: 'asc' }, // Use name instead of name
             ],
         });
 
@@ -288,12 +288,12 @@ export class ReportsService {
 
             return {
                 spaceId: space.id,
-                spaceName: space.unitNumber, // Use unitNumber as spaceName
+                spaceName: space.name, // Use name as spaceName
                 propertyId: space.property.id,
                 propertyName: space.property.name,
                 propertyAddress: space.property.address,
                 propertyType: space.property.propertyType,
-                squareFootage: Number(space.squareFeet), // Use squareFeet instead of squareFootage
+                squareFootage: Number(space.squareFootage), // Use squareFeet instead of squareFootage
                 status: activeLease ? 'OCCUPIED' : 'VACANT',
                 tenant: activeLease ? {
                     id: activeLease.tenant.id,
@@ -400,7 +400,7 @@ export class ReportsService {
                 },
                 space: {
                     id: lease.space.id,
-                    name: lease.space.unitNumber, // Use unitNumber instead of name
+                    name: lease.space.name, 
                 },
                 leaseDetails: {
                     startDate: lease.startDate,
@@ -480,7 +480,7 @@ export class ReportsService {
                 space: {
                     select: {
                         id: true,
-                        unitNumber: true, // Use unitNumber instead of name
+                        name: true, 
                     },
                 },
             },
@@ -588,7 +588,7 @@ export class ReportsService {
                 },
                 space: {
                     id: lease.space.id,
-                    name: lease.space.unitNumber, // Use unitNumber instead of name
+                    name: lease.space.name, 
                 },
                 lease: {
                     id: lease.id,
@@ -872,7 +872,7 @@ export class ReportsService {
                 endDate: true,
                 space: {
                     select: {
-                        unitNumber: true,
+                        name: true,
                         property: {
                             select: {
                                 name: true
@@ -902,7 +902,7 @@ export class ReportsService {
             const daysActive = Math.ceil((leaseEnd.getTime() - leaseStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
             const proratedAmount = (Number(lease.monthlyRent) / daysInMonth) * daysActive;
 
-            console.log(`Lease ${lease.id} (${lease.space.property.name} - ${lease.space.unitNumber}):`, {
+            console.log(`Lease ${lease.id} (${lease.space.property.name} - ${lease.space.name}):`, {
                 monthlyRent: Number(lease.monthlyRent),
                 daysActive,
                 daysInMonth,
@@ -1153,7 +1153,7 @@ export class ReportsService {
                 maintenanceRequest: {
                     include: {
                         property: { select: { name: true } },
-                        space: { select: { unitNumber: true } }
+                        space: { select: { name: true } }
                     }
                 }
             },
@@ -1184,7 +1184,7 @@ export class ReportsService {
             priority: assignment.maintenanceRequest.priority,
             status: assignment.maintenanceRequest.status,
             property: assignment.maintenanceRequest.property.name,
-            unit: assignment.maintenanceRequest.space?.unitNumber || 'Common Area',
+            unit: assignment.maintenanceRequest.space?.name || 'Common Area',
             createdAt: assignment.maintenanceRequest.createdAt,
             assignmentStatus: assignment.status,
         }));
@@ -1272,7 +1272,7 @@ export class ReportsService {
             dashboardType: 'TENANT',
             lease: {
                 property: activeLease.space.property.name,
-                unit: activeLease.space.unitNumber,
+                unit: activeLease.space.name,
                 monthlyRent: Number(activeLease.monthlyRent),
                 leaseEnd: activeLease.endDate,
                 daysUntilExpiry: activeLease.endDate ?

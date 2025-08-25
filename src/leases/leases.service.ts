@@ -88,9 +88,23 @@ export class LeasesService {
 
         const lease = await this.prisma.lease.create({
             data: {
-                ...createLeaseDto,
                 startDate,
                 endDate,
+                monthlyRent: createLeaseDto.monthlyRent,
+                securityDeposit: createLeaseDto.securityDeposit,
+                status: createLeaseDto.status,                   // optional
+                nnnExpenses: createLeaseDto.nnnExpenses,         // optional
+                utilitiesIncluded: createLeaseDto.utilitiesIncluded ?? false,
+                petDeposit: createLeaseDto.petDeposit,
+
+                // rename if your DTO used leaseTerms:
+                renewalTerms: (createLeaseDto as any).renewalTerms ?? undefined,
+                specialTerms: (createLeaseDto as any).specialTerms ?? undefined,
+
+                // use checked create via connect
+                space: { connect: { id: createLeaseDto.spaceId } },
+                property: { connect: { id: createLeaseDto.propertyId } },
+                tenant: { connect: { id: createLeaseDto.tenantId } },
             },
             include: {
                 space: {
@@ -100,25 +114,12 @@ export class LeasesService {
                                 id: true,
                                 name: true,
                                 address: true,
-                                entity: {
-                                    select: {
-                                        id: true,
-                                        name: true,
-                                    },
-                                },
+                                entity: { select: { id: true, name: true } },
                             },
                         },
                     },
                 },
-                tenant: {
-                    select: {
-                        id: true,
-                        firstName: true,
-                        lastName: true,
-                        email: true,
-                        phone: true,
-                    },
-                },
+                tenant: { select: { id: true, firstName: true, lastName: true, email: true } },
             },
         });
 
@@ -155,7 +156,7 @@ export class LeasesService {
                 { tenant: { firstName: { contains: search, mode: 'insensitive' } } },
                 { tenant: { lastName: { contains: search, mode: 'insensitive' } } },
                 { tenant: { email: { contains: search, mode: 'insensitive' } } },
-                { space: { unitNumber: { contains: search, mode: 'insensitive' } } },
+                { space: { name: { contains: search, mode: 'insensitive' } } },
                 { space: { property: { name: { contains: search, mode: 'insensitive' } } } },
             ];
         }

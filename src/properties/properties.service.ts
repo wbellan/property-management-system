@@ -38,23 +38,25 @@ export class PropertiesService {
         }
 
         const property = await this.prisma.property.create({
-            data: createPropertyDto,
+            data: {
+                name: createPropertyDto.name,
+                address: createPropertyDto.address,
+                city: createPropertyDto.city,
+                state: createPropertyDto.state,
+                zipCode: createPropertyDto.zipCode,
+                propertyType: createPropertyDto.propertyType,
+                description: createPropertyDto.description,
+                totalSpaces: createPropertyDto.totalSpaces ?? 1,
+                purchasePrice: createPropertyDto.purchasePrice,
+                currentMarketValue: createPropertyDto.currentMarketValue,
+                entity: { connect: { id: createPropertyDto.entityId } },
+            },
             include: {
                 entity: {
                     select: {
                         id: true,
                         name: true,
-                        organization: {
-                            select: {
-                                id: true,
-                                name: true,
-                            },
-                        },
-                    },
-                },
-                _count: {
-                    select: {
-                        spaces: true,
+                        organization: { select: { id: true, name: true } },
                     },
                 },
             },
@@ -187,7 +189,7 @@ export class PropertiesService {
                             },
                         },
                     },
-                    orderBy: { unitNumber: 'asc' },
+                    orderBy: { name: 'asc' },
                 },
                 maintenanceReqs: {
                     where: {
@@ -203,7 +205,7 @@ export class PropertiesService {
                         },
                         space: {
                             select: {
-                                unitNumber: true,
+                                name: true,
                             },
                         },
                     },
@@ -275,7 +277,23 @@ export class PropertiesService {
 
         const updatedProperty = await this.prisma.property.update({
             where: { id },
-            data: updatePropertyDto,
+            data: {
+                ...(updatePropertyDto.propertyType
+                    ? { propertyType: { set: updatePropertyDto.propertyType } }
+                    : {}),
+                name: updatePropertyDto.name,
+                address: updatePropertyDto.address,
+                city: updatePropertyDto.city,
+                state: updatePropertyDto.state,
+                zipCode: updatePropertyDto.zipCode,
+                description: updatePropertyDto.description,
+                totalSpaces: updatePropertyDto.totalSpaces,
+                purchasePrice: updatePropertyDto.purchasePrice,
+                currentMarketValue: updatePropertyDto.currentMarketValue,
+                ...(updatePropertyDto.entityId
+                    ? { entity: { connect: { id: updatePropertyDto.entityId } } }
+                    : {}),
+            },
             include: {
                 entity: {
                     select: {
@@ -424,7 +442,7 @@ export class PropertiesService {
                 id: property.id,
                 name: property.name,
                 address: property.address,
-                totalUnits: property.totalUnits,
+                totalSpaces: property.totalSpaces,
             },
             occupancy: {
                 totalSpaces,

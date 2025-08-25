@@ -47,18 +47,16 @@ export class SpacesService {
       }
     }
 
-    // Check if unit number already exists in this property
-    const existingSpace = await this.prisma.space.findUnique({
+    // Check if space name already exists in this property
+    const existingSpace = await this.prisma.space.findFirst({
       where: {
-        propertyId_unitNumber: {
-          propertyId: createSpaceDto.propertyId,
-          unitNumber: createSpaceDto.unitNumber,
-        },
+        propertyId: createSpaceDto.propertyId,
+        name: createSpaceDto.name,
       },
     });
 
     if (existingSpace) {
-      throw new BadRequestException(`Unit number ${createSpaceDto.unitNumber} already exists in this property`);
+      throw new BadRequestException(`Unit number ${createSpaceDto.name} already exists in this property`);
     }
 
     const space = await this.prisma.space.create({
@@ -112,7 +110,7 @@ export class SpacesService {
     // Add filters
     if (search) {
       where.OR = [
-        { unitNumber: { contains: search, mode: 'insensitive' } },
+        { name: { contains: search, mode: 'insensitive' } },
         { description: { contains: search, mode: 'insensitive' } },
         { property: { name: { contains: search, mode: 'insensitive' } } },
       ];
@@ -188,7 +186,7 @@ export class SpacesService {
           },
         },
       },
-      orderBy: [{ property: { name: 'asc' } }, { unitNumber: 'asc' }],
+      orderBy: [{ property: { name: 'asc' } }, { name: 'asc' }],
     });
   }
 
@@ -272,22 +270,23 @@ export class SpacesService {
       throw new ForbiddenException('Insufficient permissions');
     }
 
+    // Load existing to get the propertyId (since we don't allow changing it here)
     const space = await this.prisma.space.findUnique({
-      where: { id },
+      where: { id }, // or { id }
       include: {
         property: {
-          select: {
-            id: true,
+          include: {
             entity: {
-              select: {
-                id: true,
-                organizationId: true,
-              },
+              select: { id: true, organizationId: true },
             },
           },
         },
       },
     });
+    
+    if (!space) {
+      throw new NotFoundException('Space not found');
+    }
 
     if (!space) {
       throw new NotFoundException('Space not found');
@@ -306,48 +305,51 @@ export class SpacesService {
       }
     }
 
-    // If updating unit number, check for conflicts
-    if (updateSpaceDto.unitNumber && updateSpaceDto.unitNumber !== space.unitNumber) {
-      const existingSpace = await this.prisma.space.findUnique({
+    // If the name is being changed, ensure uniqueness within SAME property
+    if (updateSpaceDto.name) {
+      const conflict = await this.prisma.space.findFirst({
         where: {
-          propertyId_unitNumber: {
-            propertyId: space.propertyId,
-            unitNumber: updateSpaceDto.unitNumber,
-          },
+          propertyId: space.propertyId,
+          name: updateSpaceDto.name,
+          NOT: { id }, // avoid colliding with itself
         },
+        select: { id: true },
       });
-
-      if (existingSpace) {
-        throw new BadRequestException(`Unit number ${updateSpaceDto.unitNumber} already exists in this property`);
+      if (conflict) {
+        throw new BadRequestException(
+          'A space with this name already exists for the property',
+        );
       }
     }
 
-    const updatedSpace = await this.prisma.space.update({
+    // Proceed with the update (no propertyId here)
+    const updated = await this.prisma.space.update({
       where: { id },
-      data: updateSpaceDto,
+      data: {
+        name: updateSpaceDto.name,
+        description: updateSpaceDto.description,
+        squareFootage: updateSpaceDto.squareFootage,
+        bedrooms: updateSpaceDto.bedrooms,
+        bathrooms: updateSpaceDto.bathrooms,
+        rent: updateSpaceDto.rent,
+        deposit: updateSpaceDto.deposit,
+        amenities: updateSpaceDto.amenities,
+        floorNumber: updateSpaceDto.floorNumber,
+        ...(updateSpaceDto.type
+          ? { type: { set: updateSpaceDto.type } } // enum update
+          : {}),
+        ...(updateSpaceDto.status
+          ? { status: { set: updateSpaceDto.status } } // enum update
+          : {}),
+      },
       include: {
         property: {
-          select: {
-            id: true,
-            name: true,
-            address: true,
-            entity: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-          },
-        },
-        _count: {
-          select: {
-            leases: true,
-          },
+          select: { id: true, name: true },
         },
       },
     });
 
-    return updatedSpace;
+    return updated;
   }
 
   async remove(id: string, userRole: UserRole, userOrgId: string, userEntities: string[], userProperties: string[]) {
@@ -446,7 +448,7 @@ export class SpacesService {
           },
         },
       },
-      orderBy: { unitNumber: 'asc' },
+      orderBy: { name: 'asc' },
     });
 
     const stats = {
@@ -503,7 +505,7 @@ export class SpacesService {
           },
         },
       },
-      orderBy: [{ property: { name: 'asc' } }, { unitNumber: 'asc' }],
+      orderBy: [{ property: { name: 'asc' } }, { name: 'asc' }],
     });
 
     return availableSpaces;

@@ -1,8 +1,16 @@
 // src/maintenance/maintenance.service.ts
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { MaintenanceRequest, UserRole } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
+
+
+interface MaintenanceRequestWithPropEntity extends MaintenanceRequest {
+    property: {
+        entity: { id: string; organizationId: string };
+        id: string;
+    };
+}
 
 @Injectable()
 export class MaintenanceService {
@@ -88,9 +96,12 @@ export class MaintenanceService {
                 space: {
                     select: {
                         id: true,
-                        unitNumber: true,
-                        spaceType: true,
-                    },
+                        name: true,
+                        type: true,
+                        bedrooms: true,
+                        bathrooms: true,
+                        squareFootage: true,
+                    }
                 },
                 tenant: {
                     select: {
@@ -153,7 +164,7 @@ export class MaintenanceService {
                 { tenant: { firstName: { contains: search, mode: 'insensitive' } } },
                 { tenant: { lastName: { contains: search, mode: 'insensitive' } } },
                 { property: { name: { contains: search, mode: 'insensitive' } } },
-                { space: { unitNumber: { contains: search, mode: 'insensitive' } } },
+                { space: { name: { contains: search, mode: 'insensitive' } } },
             ];
         }
 
@@ -199,7 +210,7 @@ export class MaintenanceService {
                 space: {
                     select: {
                         id: true,
-                        unitNumber: true,
+                        name: true,
                         spaceType: true,
                     },
                 },
@@ -255,9 +266,12 @@ export class MaintenanceService {
                 space: {
                     select: {
                         id: true,
-                        unitNumber: true,
-                        spaceType: true,
-                    },
+                        name: true,
+                        type: true,
+                        bedrooms: true,
+                        bathrooms: true,
+                        squareFootage: true,
+                    }
                 },
                 tenant: {
                     select: {
@@ -291,7 +305,7 @@ export class MaintenanceService {
         return requests;
     }
 
-    async findOneMaintenanceRequest(id: string, userRole: UserRole, userOrgId: string, userEntities: string[], userProperties: string[]) {
+    async findOneMaintenanceRequest(id: string, userRole: UserRole, userOrgId: string, userEntities: string[], userProperties: string[]): Promise<MaintenanceRequestWithPropEntity | null> {
         const maintenanceRequest = await this.prisma.maintenanceRequest.findUnique({
             where: { id },
             include: {
@@ -309,12 +323,12 @@ export class MaintenanceService {
                 space: {
                     select: {
                         id: true,
-                        unitNumber: true,
-                        spaceType: true,
+                        name: true,
+                        type: true,
                         bedrooms: true,
                         bathrooms: true,
-                        squareFeet: true,
-                    },
+                        squareFootage: true,
+                    }
                 },
                 tenant: {
                     select: {
@@ -417,9 +431,12 @@ export class MaintenanceService {
                 space: {
                     select: {
                         id: true,
-                        unitNumber: true,
-                        spaceType: true,
-                    },
+                        name: true,
+                        type: true,
+                        bedrooms: true,
+                        bathrooms: true,
+                        squareFootage: true,
+                    }
                 },
                 tenant: {
                     select: {
@@ -494,7 +511,7 @@ export class MaintenanceService {
                         space: {
                             select: {
                                 id: true,
-                                unitNumber: true,
+                                name: true,
                             },
                         },
                         tenant: {
@@ -776,7 +793,7 @@ export class MaintenanceService {
                                 space: {
                                     select: {
                                         id: true,
-                                        unitNumber: true,
+                                        name: true,
                                     },
                                 },
                             },
