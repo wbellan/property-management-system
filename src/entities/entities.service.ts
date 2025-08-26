@@ -1,11 +1,12 @@
 // src/entities/entities.service.ts
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { Entity, UserRole } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEntityDto } from './dto/create-entity.dto';
 import { UpdateEntityDto } from './dto/update-entity.dto';
 import { EntityQueryDto } from './dto/entity-query.dto';
+import { MarkVerifiedDto } from './dto/mark-verified.dto';
 
 @Injectable()
 export class EntitiesService {
@@ -313,4 +314,50 @@ export class EntitiesService {
             },
         };
     }
+
+    async markAsVerified(
+        id: string,
+        markVerifiedDto: MarkVerifiedDto,
+        userRole: UserRole,
+        userOrgId: string,
+        userEntities: string[]
+    ): Promise<Entity> {
+        // Check permissions (same as existing methods)
+        const entity = await this.prisma.entity.findUnique({ where: { id } });
+
+        if (!entity) {
+            throw new NotFoundException('Entity not found');
+        }
+
+        // Verify access permissions
+        if (userRole !== UserRole.SUPER_ADMIN) {
+            if (userRole === UserRole.ORG_ADMIN && entity.organizationId !== userOrgId) {
+                throw new ForbiddenException('Insufficient permissions');
+            }
+            if (userRole === UserRole.ENTITY_MANAGER && !userEntities.includes(id)) {
+                throw new ForbiddenException('Insufficient permissions');
+            }
+        }
+
+        // Update entity with verification data
+        return await this.prisma.entity.update({
+            where: { id },
+            data: {
+                isVerified: markVerifiedDto.isVerified,
+                verifiedAt: new Date(markVerifiedDto.verifiedAt),
+            },
+            include: {
+                organization: {
+                    select: { id: true, name: true }
+                },
+                _count: {
+                    select: {
+                        properties: true,
+                        bankLedgers: true
+                    }
+                }
+            }
+        });
+    }
+
 }

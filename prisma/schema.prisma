@@ -41,6 +41,9 @@ model Entity {
   organizationId String
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
+  isActive       Boolean  @default(true)    
+  isVerified     Boolean  @default(false)   
+  verifiedAt     DateTime?                  
   
   bankLedgers    BankLedger[]
   chartAccounts  ChartOfAccount[]

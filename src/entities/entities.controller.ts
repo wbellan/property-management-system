@@ -21,13 +21,19 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { VerifyEinDto } from './dto/verify-ein.dto';
+import { MarkVerifiedDto } from './dto/mark-verified.dto';
+import { EinVerificationService } from './ein-verification.service';
 
 @ApiTags('Entities')
 @Controller('entities')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth('JWT-auth')
 export class EntitiesController {
-    constructor(private readonly entitiesService: EntitiesService) { }
+    constructor(
+        private readonly entitiesService: EntitiesService,
+        private readonly einVerificationService: EinVerificationService
+    ) { }
 
     @Post()
     @UseGuards(RolesGuard)
@@ -119,5 +125,42 @@ export class EntitiesController {
         @CurrentUser('organizationId') userOrgId: string,
     ) {
         return this.entitiesService.remove(id, userRole, userOrgId);
+    }
+
+    @Post('verify-ein')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.SUPER_ADMIN, UserRole.ORG_ADMIN, UserRole.ENTITY_MANAGER)
+    @ApiOperation({ summary: 'Verify EIN/Tax ID' })
+    async verifyEIN(@Body() verifyEinDto: VerifyEinDto) {
+        const result = await this.einVerificationService.verifyEIN(verifyEinDto.ein);
+        return {
+            success: true,
+            data: result
+        };
+    }
+
+    @Patch(':id/verify')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.SUPER_ADMIN, UserRole.ORG_ADMIN, UserRole.ENTITY_MANAGER)
+    @ApiOperation({ summary: 'Mark entity as EIN verified' })
+    async markEntityVerified(
+        @Param('id') id: string,
+        @Body() markVerifiedDto: MarkVerifiedDto,
+        @CurrentUser('role') userRole: UserRole,
+        @CurrentUser('organizationId') userOrgId: string,
+        @CurrentUser('entities') userEntities: any[]
+    ) {
+        const entityIds = userEntities.map(e => e.id);
+        const result = await this.entitiesService.markAsVerified(
+            id,
+            markVerifiedDto,
+            userRole,
+            userOrgId,
+            entityIds
+        );
+        return {
+            success: true,
+            data: result
+        };
     }
 }
