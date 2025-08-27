@@ -1,43 +1,50 @@
-// src/entities/dto/create-entity.dto.ts
-import { IsString, IsOptional, IsEmail } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { IsString, IsOptional, IsBoolean, IsEmail, IsUrl } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class CreateEntityDto {
-    @ApiProperty({ example: 'Main Street Properties LLC' })
     @IsString()
     name: string;
 
-    @ApiProperty({ example: 'Main Street Properties Limited Liability Company', required: false })
-    @IsOptional()
     @IsString()
-    legalName?: string;
+    legalName: string;
 
-    @ApiProperty({ example: 'LLC', required: false })
-    @IsOptional()
     @IsString()
-    entityType?: string;
+    entityType: string;
 
-    @ApiProperty({ example: '12-3456789', required: false })
-    @IsOptional()
     @IsString()
-    taxId?: string;
+    organizationId: string;
 
-    @ApiProperty({ example: '456 Business Ave, City, State 12345', required: false })
     @IsOptional()
     @IsString()
     address?: string;
 
-    @ApiProperty({ example: '+1234567890', required: false })
     @IsOptional()
     @IsString()
     phone?: string;
 
-    @ApiProperty({ example: 'contact@mainstreetproperties.com', required: false })
     @IsOptional()
-    @IsEmail()
+    @Transform(({ value }) => value && value.trim() !== '' ? value : undefined)
+    @IsEmail({}, { message: 'Email must be a valid email address' })
     email?: string;
 
-    @ApiProperty({ example: 'org-id-123' })
+    @IsOptional()
     @IsString()
-    organizationId: string;
+    fax?: string;
+
+    @IsOptional()
+    @Transform(({ value }) => value && value.trim() !== '' ? value : undefined)
+    @IsUrl({}, { message: 'Website must be a valid URL' })
+    website?: string;
+
+    @IsOptional()
+    @IsString()
+    taxId?: string;
+
+    @IsOptional()
+    @IsString()
+    description?: string;
+
+    @IsOptional()
+    @IsBoolean()
+    isActive?: boolean;
 }

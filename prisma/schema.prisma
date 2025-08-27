@@ -38,12 +38,15 @@ model Entity {
   address        String?
   phone          String?
   email          String?
+  fax            String?   
+  website        String?   
   organizationId String
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
   isActive       Boolean  @default(true)    
   isVerified     Boolean  @default(false)   
-  verifiedAt     DateTime?                  
+  verifiedAt     DateTime?     
+  description    String?             
   
   bankLedgers    BankLedger[]
   chartAccounts  ChartOfAccount[]

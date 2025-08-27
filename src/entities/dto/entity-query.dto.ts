@@ -1,30 +1,28 @@
-// src/entities/dto/entity-query.dto.ts
 import { IsOptional, IsString, IsInt, Min } from 'class-validator';
-import { Transform } from 'class-transformer';
-import { ApiProperty } from '@nestjs/swagger';
+import { Type, Transform } from 'class-transformer';
 
 export class EntityQueryDto {
-    @ApiProperty({ required: false, example: 1 })
     @IsOptional()
-    @Transform(({ value }) => parseInt(value))
+    @Type(() => Number)
     @IsInt()
     @Min(1)
-    page?: number = 1;
+    page?: number;
 
-    @ApiProperty({ required: false, example: 10 })
     @IsOptional()
-    @Transform(({ value }) => parseInt(value))
+    @Type(() => Number)
     @IsInt()
     @Min(1)
-    limit?: number = 10;
+    limit?: number;
 
-    @ApiProperty({ required: false, example: 'LLC' })
     @IsOptional()
     @IsString()
     search?: string;
 
-    @ApiProperty({ required: false, example: 'LLC' })
     @IsOptional()
     @IsString()
     entityType?: string;
+
+    @IsOptional()
+    @IsString()
+    status?: string;
 }

@@ -33,7 +33,10 @@ export class EntitiesService {
         }
 
         const entity = await this.prisma.entity.create({
-            data: createEntityDto,
+            data: {
+                ...createEntityDto,
+                isActive: createEntityDto.isActive ?? true, // Default to true if not provided
+            },
             include: {
                 organization: {
                     select: {
