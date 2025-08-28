@@ -22,12 +22,14 @@ export class ReportsService {
         const start = new Date(startDate);
         const end = new Date(endDate);
 
-        // Get revenue data from payments
-        const revenue = await this.prisma.payment.aggregate({
+        // Get revenue data from payment applications
+        const revenue = await this.prisma.paymentApplication.aggregate({
             where: {
-                createdAt: {
-                    gte: start,
-                    lte: end,
+                payment: {
+                    createdAt: {
+                        gte: start,
+                        lte: end,
+                    },
                 },
                 invoice: {
                     lease: {
@@ -40,7 +42,7 @@ export class ReportsService {
                 },
             },
             _sum: {
-                amount: true,
+                appliedAmount: true,
             },
         });
 
@@ -61,7 +63,7 @@ export class ReportsService {
         });
 
         // Convert Decimal to number properly
-        const totalRevenue = Number(revenue._sum.amount || 0);
+        const totalRevenue = Number(revenue._sum.appliedAmount || 0);
         const totalExpenses = Number(expenses._sum.amount || 0);
         const netIncome = totalRevenue - totalExpenses;
         const profitMargin = totalRevenue > 0 ? (netIncome / totalRevenue) * 100 : 0;
@@ -274,7 +276,7 @@ export class ReportsService {
             },
             orderBy: [
                 { property: { name: 'asc' } },
-                { name: 'asc' }, // Use name instead of name
+                { name: 'asc' },
             ],
         });
 
@@ -288,12 +290,12 @@ export class ReportsService {
 
             return {
                 spaceId: space.id,
-                spaceName: space.name, // Use name as spaceName
+                spaceName: space.name,
                 propertyId: space.property.id,
                 propertyName: space.property.name,
                 propertyAddress: space.property.address,
                 propertyType: space.property.propertyType,
-                squareFootage: Number(space.squareFootage), // Use squareFeet instead of squareFootage
+                squareFootage: Number(space.squareFootage),
                 status: activeLease ? 'OCCUPIED' : 'VACANT',
                 tenant: activeLease ? {
                     id: activeLease.tenant.id,
@@ -400,7 +402,7 @@ export class ReportsService {
                 },
                 space: {
                     id: lease.space.id,
-                    name: lease.space.name, 
+                    name: lease.space.name,
                 },
                 leaseDetails: {
                     startDate: lease.startDate,
@@ -480,7 +482,7 @@ export class ReportsService {
                 space: {
                     select: {
                         id: true,
-                        name: true, 
+                        name: true,
                     },
                 },
             },
@@ -588,7 +590,7 @@ export class ReportsService {
                 },
                 space: {
                     id: lease.space.id,
-                    name: lease.space.name, 
+                    name: lease.space.name,
                 },
                 lease: {
                     id: lease.id,
@@ -842,17 +844,9 @@ export class ReportsService {
         const occupancyRate = totalSpaces > 0 ? (occupiedSpaces / totalSpaces) * 100 : 0;
 
         // Get financial data across all accessible entities
-        console.log('=== DASHBOARD DEBUG ===');
-        console.log('Organization ID:', organizationId);
-        console.log('Accessible Entity IDs:', accessibleEntityIds);
-
-        // Get current month's expected revenue based on active leases
         const now = new Date();
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-        // console.log('=== REVENUE CALCULATION DEBUG ===');
-        // console.log('Current month range:', { startOfMonth, endOfMonth });
 
         // Get all active leases and filter in application logic
         const currentMonthLeases = await this.prisma.lease.findMany({
@@ -870,16 +864,6 @@ export class ReportsService {
                 monthlyRent: true,
                 startDate: true,
                 endDate: true,
-                space: {
-                    select: {
-                        name: true,
-                        property: {
-                            select: {
-                                name: true
-                            }
-                        }
-                    }
-                }
             }
         });
 
@@ -888,8 +872,6 @@ export class ReportsService {
             // Include if no end date (ongoing) or end date is after month start
             return !lease.endDate || lease.endDate >= startOfMonth;
         });
-
-        console.log(`Found ${activeInCurrentMonth.length} active leases for current month`);
 
         // Calculate prorated revenue for partial months
         let currentMonthRevenue = 0;
@@ -902,18 +884,8 @@ export class ReportsService {
             const daysActive = Math.ceil((leaseEnd.getTime() - leaseStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
             const proratedAmount = (Number(lease.monthlyRent) / daysInMonth) * daysActive;
 
-            console.log(`Lease ${lease.id} (${lease.space.property.name} - ${lease.space.name}):`, {
-                monthlyRent: Number(lease.monthlyRent),
-                daysActive,
-                daysInMonth,
-                proratedAmount: Math.round(proratedAmount * 100) / 100
-            });
-
             currentMonthRevenue += proratedAmount;
         });
-
-        console.log('Total expected monthly revenue:', Math.round(currentMonthRevenue * 100) / 100);
-        // console.log('=== END REVENUE DEBUG ===');
 
         // Get maintenance across all accessible entities
         const maintenanceStats = await Promise.all([
@@ -967,7 +939,6 @@ export class ReportsService {
             },
             financial: {
                 monthlyRevenue: Math.round(currentMonthRevenue * 100) / 100
-                // monthlyRevenue: Number(monthlyRevenue._sum.amount || 0),
             },
             maintenance: {
                 openTasks: statusStats.find(s => s.status === 'OPEN')?._count || 0,
@@ -1042,7 +1013,7 @@ export class ReportsService {
             where: {
                 space: { propertyId: { in: propertyIds } },
                 status: 'ACTIVE',
-                endDate: { lte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) } // 30 days
+                endDate: { lte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) }
             }
         });
 
@@ -1080,9 +1051,11 @@ export class ReportsService {
         lastMonth.setMonth(lastMonth.getMonth() - 1);
 
         const [revenue, expenses, outstandingInvoices, recentPayments] = await Promise.all([
-            this.prisma.payment.aggregate({
+            this.prisma.paymentApplication.aggregate({
                 where: {
-                    createdAt: { gte: lastMonth, lte: currentMonth },
+                    payment: {
+                        createdAt: { gte: lastMonth, lte: currentMonth },
+                    },
                     invoice: {
                         lease: {
                             space: {
@@ -1091,7 +1064,7 @@ export class ReportsService {
                         }
                     }
                 },
-                _sum: { amount: true }
+                _sum: { appliedAmount: true }
             }),
             this.prisma.propertyExpense.aggregate({
                 where: {
@@ -1100,10 +1073,9 @@ export class ReportsService {
                 },
                 _sum: { amount: true }
             }),
-            // Fix: Use correct enum value - 'SENT' instead of 'PENDING'
             this.prisma.invoice.count({
                 where: {
-                    status: 'SENT', // Changed from 'PENDING' to 'SENT' based on your enum
+                    status: 'SENT',
                     lease: {
                         space: {
                             property: { entityId: { in: entityIds } }
@@ -1113,11 +1085,15 @@ export class ReportsService {
             }),
             this.prisma.payment.count({
                 where: {
-                    createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }, // Last 7 days
-                    invoice: {
-                        lease: {
-                            space: {
-                                property: { entityId: { in: entityIds } }
+                    createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+                    paymentApplications: {
+                        some: {
+                            invoice: {
+                                lease: {
+                                    space: {
+                                        property: { entityId: { in: entityIds } }
+                                    }
+                                }
                             }
                         }
                     }
@@ -1129,9 +1105,9 @@ export class ReportsService {
             dashboardType: 'ACCOUNTANT',
             organizationId,
             financial: {
-                monthlyRevenue: Number(revenue._sum.amount || 0),
+                monthlyRevenue: Number(revenue._sum.appliedAmount || 0),
                 monthlyExpenses: Number(expenses._sum.amount || 0),
-                netIncome: Number(revenue._sum.amount || 0) - Number(expenses._sum.amount || 0),
+                netIncome: Number(revenue._sum.appliedAmount || 0) - Number(expenses._sum.amount || 0),
                 outstandingInvoices,
                 recentPayments,
             },
@@ -1207,8 +1183,6 @@ export class ReportsService {
 
     // TENANT Dashboard
     async getTenantDashboard(userId: string) {
-        console.log('Getting tenant dashboard for userId:', userId);
-
         if (!userId) {
             return {
                 dashboardType: 'TENANT',
@@ -1237,7 +1211,7 @@ export class ReportsService {
         const activeLeases = await this.prisma.lease.findMany({
             where: {
                 tenantId: userId,
-                status: { in: ['ACTIVE'] } // Only active, not expiring
+                status: { in: ['ACTIVE'] }
             },
             include: {
                 space: {
@@ -1346,9 +1320,11 @@ export class ReportsService {
         const lastMonth = new Date();
         lastMonth.setMonth(lastMonth.getMonth() - 1);
 
-        const revenue = await this.prisma.payment.aggregate({
+        const revenue = await this.prisma.paymentApplication.aggregate({
             where: {
-                createdAt: { gte: lastMonth, lte: currentMonth },
+                payment: {
+                    createdAt: { gte: lastMonth, lte: currentMonth },
+                },
                 invoice: {
                     lease: {
                         space: {
@@ -1357,10 +1333,10 @@ export class ReportsService {
                     }
                 }
             },
-            _sum: { amount: true }
+            _sum: { appliedAmount: true }
         });
 
-        return { monthlyRevenue: Number(revenue._sum.amount || 0) };
+        return { monthlyRevenue: Number(revenue._sum.appliedAmount || 0) };
     }
 
     private async getEntityMaintenanceMetrics(entityIds: string[]) {
@@ -1397,7 +1373,6 @@ export class ReportsService {
     }
 
     private calculateNextPaymentDue(payments: any[]) {
-        // Simple logic - in real app you'd have more sophisticated payment due calculation
         if (payments.length === 0) return null;
 
         const lastPayment = payments[0];
@@ -1408,11 +1383,13 @@ export class ReportsService {
     }
 
     private async getIncomeForPeriod(entityId: string, start: Date, end: Date) {
-        const payments = await this.prisma.payment.aggregate({
+        const payments = await this.prisma.paymentApplication.aggregate({
             where: {
-                createdAt: {
-                    gte: start,
-                    lte: end,
+                payment: {
+                    createdAt: {
+                        gte: start,
+                        lte: end,
+                    },
                 },
                 invoice: {
                     lease: {
@@ -1425,12 +1402,12 @@ export class ReportsService {
                 },
             },
             _sum: {
-                amount: true,
+                appliedAmount: true,
             },
         });
 
         return {
-            total: Number(payments._sum.amount || 0),
+            total: Number(payments._sum.appliedAmount || 0),
         };
     }
 
@@ -1440,7 +1417,7 @@ export class ReportsService {
                 property: {
                     entityId,
                 },
-                createdAt: { // Use createdAt instead of date
+                createdAt: {
                     gte: start,
                     lte: end,
                 },
@@ -1476,11 +1453,13 @@ export class ReportsService {
         const lastMonth = new Date();
         lastMonth.setMonth(lastMonth.getMonth() - 1);
 
-        const monthlyRevenue = await this.prisma.payment.aggregate({
+        const monthlyRevenue = await this.prisma.paymentApplication.aggregate({
             where: {
-                createdAt: {
-                    gte: lastMonth,
-                    lte: currentMonth,
+                payment: {
+                    createdAt: {
+                        gte: lastMonth,
+                        lte: currentMonth,
+                    },
                 },
                 invoice: {
                     lease: {
@@ -1490,11 +1469,11 @@ export class ReportsService {
                     },
                 },
             },
-            _sum: { amount: true },
+            _sum: { appliedAmount: true },
         });
 
         return {
-            monthlyRevenue: Number(monthlyRevenue._sum.amount || 0),
+            monthlyRevenue: Number(monthlyRevenue._sum.appliedAmount || 0),
             period: {
                 start: lastMonth,
                 end: currentMonth,

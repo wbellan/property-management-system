@@ -46,7 +46,7 @@ async function main() {
     await prisma.vendor.deleteMany();
     await prisma.property.deleteMany();
     await prisma.bankLedger.deleteMany();
-    await prisma.chartOfAccount.deleteMany();
+    await prisma.chartAccount.deleteMany();
     await prisma.entity.deleteMany();
     await prisma.organization.deleteMany();
 
@@ -493,7 +493,7 @@ async function main() {
 
     for (const entity of [entity1, entity2]) {
         for (const account of accountTypes) {
-            await prisma.chartOfAccount.create({
+            await prisma.chartAccount.create({
                 data: {
                     entityId: entity.id,
                     accountCode: account.code,
