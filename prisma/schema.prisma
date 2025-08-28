@@ -313,7 +313,7 @@ model ChartAccount {
   entityId    String
   accountCode String
   accountName String
-  accountType String
+  accountType AccountType
   description String?
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
@@ -1002,4 +1002,12 @@ enum InvitationStatus {
   COMPLETED
   EXPIRED
   CANCELLED
+}
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
 }

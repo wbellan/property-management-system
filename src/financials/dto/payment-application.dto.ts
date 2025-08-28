@@ -1,22 +1,19 @@
 // File: src/financials/dto/payment-application.dto.ts
 
-import { IsString, IsNumber, IsOptional, Min, IsPositive, IsDateString } from 'class-validator';
+import { IsString, IsNumber, IsOptional, Min, IsPositive, IsDateString, IsNotEmpty } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreatePaymentApplicationDto {
     @IsString()
+    @IsNotEmpty()
     paymentId: string;
 
     @IsString()
+    @IsNotEmpty()
     invoiceId: string;
 
     @IsNumber()
-    @IsPositive()
     appliedAmount: number;
-
-    @IsOptional()
-    @IsDateString()
-    appliedDate?: string;
 
     @IsOptional()
     @IsString()

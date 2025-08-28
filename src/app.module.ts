@@ -21,6 +21,7 @@ import { EmailModule } from './email/email.module';
 import { TasksModule } from './tasks/tasks.module';
 import { SettingsModule } from './settings/settings.module';
 import { ProfileModule } from './profile/profile.module';
+import { EnhancedFinancialModule } from './financials/enhanced-financial.module';
 
 @Module({
     imports: [
@@ -56,7 +57,8 @@ import { ProfileModule } from './profile/profile.module';
         EmailModule,
         TasksModule,
         SettingsModule,
-        ProfileModule
+        ProfileModule,
+        EnhancedFinancialModule
     ],
     providers: [
         {

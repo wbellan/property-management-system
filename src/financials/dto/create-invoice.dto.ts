@@ -1,7 +1,8 @@
-import { IsString, IsNumber, IsOptional, IsEnum, IsDateString, IsArray, ValidateNested, IsBoolean, Min, IsPositive } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsEnum, IsDateString, IsArray, ValidateNested, IsBoolean, Min, IsPositive, IsNotEmpty } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { CreateInvoiceLineItemDto } from './invoice-line-item.dto';
 import { InvoiceType, InvoiceStatus } from '@prisma/client';
+import { PartialType } from '@nestjs/swagger';
 
 // export enum InvoiceType {
 //     RENT = 'RENT',
@@ -25,130 +26,31 @@ import { InvoiceType, InvoiceStatus } from '@prisma/client';
 
 export class CreateInvoiceDto {
     @IsString()
+    @IsNotEmpty()
     entityId: string;
 
-    @IsOptional()
-    @IsString()
-    invoiceNumber?: string; 
-
-    @IsOptional()
-    @IsString()
-    tenantId?: string;
-
-    @IsOptional()
-    @IsString()
-    vendorId?: string;
-
-    @IsString()
-    billToName: string;
-
-    @IsOptional()
-    @IsString()
-    billToAddress?: string;
-
-    @IsOptional()
-    @IsString()
-    billToEmail?: string;
-
     @IsEnum(InvoiceType)
-    invoiceType: InvoiceType;
-
     @IsOptional()
-    @IsString()
-    propertyId?: string;
-
-    @IsOptional()
-    @IsString()
-    spaceId?: string;
-
-    @IsOptional()
-    @IsString()
-    leaseId?: string;
-
-    @IsOptional()
-    @IsNumber()
-    taxAmount?: number;
-
-    @IsOptional()
-    @IsNumber()
-    totalAmount?: number; 
-
-    @IsOptional()
-    @IsEnum(InvoiceStatus)
-    status?: InvoiceStatus; 
-
-    @IsDateString()
-    dueDate: string;
-
-    @IsOptional()
-    @IsString()
-    paymentTerms?: string;
-
-    @IsOptional()
-    @IsNumber()
-    lateFeeAmount?: number;
-
-    @IsOptional()
-    @IsDateString()
-    lateFeeDate?: string;
-
-    @IsOptional()
-    @IsString()
-    description?: string; 
-
-    @IsOptional()
-    @IsString()
-    memo?: string;
-
-    @IsOptional()
-    @IsString()
-    internalNotes?: string;
-
-    @IsOptional()
-    @IsBoolean()
-    isRecurring?: boolean;
-
-    @IsArray()
-    @ValidateNested({ each: true })
-    @Type(() => CreateInvoiceLineItemDto)
-    lineItems: CreateInvoiceLineItemDto[];
-}
-
-export class UpdateInvoiceDto {
-    @IsOptional()
-    @IsString()
-    entityId?: string;
-
-    @IsOptional()
-    @IsString()
-    invoiceNumber?: string;
-
-    @IsOptional()
-    @IsString()
-    tenantId?: string;
-
-    @IsOptional()
-    @IsString()
-    vendorId?: string;
-
-    @IsOptional()
-    @IsString()
-    billToName?: string;
-
-    @IsOptional()
-    @IsString()
-    billToAddress?: string;
-
-    @IsOptional()
-    @IsString()
-    billToEmail?: string;
-
-    @IsOptional()
-    @IsEnum(InvoiceType)
     invoiceType?: InvoiceType;
 
     @IsOptional()
     @IsString()
+    tenantId?: string;
+
+    @IsOptional()
+    @IsString()
+    vendorId?: string;
+
+    @IsOptional()
+    @IsString()
+    customerName?: string;
+
+    @IsOptional()
+    @IsString()
+    customerEmail?: string;
+
+    @IsOptional()
+    @IsString()
     propertyId?: string;
 
     @IsOptional()
@@ -160,32 +62,20 @@ export class UpdateInvoiceDto {
     leaseId?: string;
 
     @IsOptional()
+    @IsDateString()
+    issueDate?: string;
+
+    @IsDateString()
+    @IsNotEmpty()
+    dueDate: string;
+
+    @IsOptional()
     @IsNumber()
     taxAmount?: number;
 
     @IsOptional()
     @IsNumber()
-    totalAmount?: number;
-
-    @IsOptional()
-    @IsEnum(InvoiceStatus)
-    status?: InvoiceStatus;
-
-    @IsOptional()
-    @IsDateString()
-    dueDate?: string;
-
-    @IsOptional()
-    @IsString()
-    paymentTerms?: string;
-
-    @IsOptional()
-    @IsNumber()
-    lateFeeAmount?: number;
-
-    @IsOptional()
-    @IsDateString()
-    lateFeeDate?: string;
+    discountAmount?: number;
 
     @IsOptional()
     @IsString()
@@ -193,6 +83,10 @@ export class UpdateInvoiceDto {
 
     @IsOptional()
     @IsString()
+    terms?: string;
+
+    @IsOptional()
+    @IsString()
     memo?: string;
 
     @IsOptional()
@@ -200,15 +94,20 @@ export class UpdateInvoiceDto {
     internalNotes?: string;
 
     @IsOptional()
-    @IsBoolean()
-    isRecurring?: boolean;
+    @IsNumber()
+    lateFeeAmount?: number;
 
     @IsOptional()
+    @IsNumber()
+    lateFeeDays?: number;
+
     @IsArray()
     @ValidateNested({ each: true })
     @Type(() => CreateInvoiceLineItemDto)
-    lineItems?: CreateInvoiceLineItemDto[];
+    lineItems: CreateInvoiceLineItemDto[];
 }
+
+export class UpdateInvoiceDto extends PartialType(CreateInvoiceDto) { }
 
 // // ===== INVOICE LINE ITEM DTO =====
 // export class CreateInvoiceLineItemDto {

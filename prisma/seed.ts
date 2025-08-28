@@ -1,5 +1,5 @@
 // prisma/seed.ts - Updated for enhanced schema
-import { PrismaClient, UserRole, UserStatus, LeaseStatus, MaintenanceStatus, MaintenancePriority, InvoiceStatus, InvoiceType, PaymentMethod, PaymentStatus, ExpenseType, PropertyType, SpaceType, SpaceStatus } from '@prisma/client';
+import { PrismaClient, AccountType, UserRole, UserStatus, LeaseStatus, MaintenanceStatus, MaintenancePriority, InvoiceStatus, InvoiceType, PaymentMethod, PaymentStatus, ExpenseType, PropertyType, SpaceType, SpaceStatus } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -470,25 +470,25 @@ async function main() {
 
     // Create chart of accounts for each entity
     const accountTypes = [
-        { code: '1001', name: 'Operating Cash', type: 'Asset' },
-        { code: '1100', name: 'Accounts Receivable', type: 'Asset' },
-        { code: '1200', name: 'Security Deposits Held', type: 'Asset' },
-        { code: '1300', name: 'Prepaid Expenses', type: 'Asset' },
-        { code: '2100', name: 'Security Deposits Payable', type: 'Liability' },
-        { code: '2200', name: 'Accounts Payable', type: 'Liability' },
-        { code: '2300', name: 'Accrued Expenses', type: 'Liability' },
-        { code: '3000', name: 'Owner Equity', type: 'Equity' },
-        { code: '3100', name: 'Retained Earnings', type: 'Equity' },
-        { code: '4100', name: 'Rental Income', type: 'Revenue' },
-        { code: '4200', name: 'Late Fees', type: 'Revenue' },
-        { code: '4300', name: 'Application Fees', type: 'Revenue' },
-        { code: '4400', name: 'Other Income', type: 'Revenue' },
-        { code: '5100', name: 'Maintenance & Repairs', type: 'Expense' },
-        { code: '5200', name: 'Utilities', type: 'Expense' },
-        { code: '5300', name: 'Insurance', type: 'Expense' },
-        { code: '5400', name: 'Property Taxes', type: 'Expense' },
-        { code: '5500', name: 'Management Fees', type: 'Expense' },
-        { code: '5600', name: 'Landscaping', type: 'Expense' }
+        { code: '1001', name: 'Operating Cash', type: AccountType.ASSET },
+        { code: '1100', name: 'Accounts Receivable', type: AccountType.ASSET },
+        { code: '1200', name: 'Security Deposits Held', type: AccountType.ASSET },
+        { code: '1300', name: 'Prepaid Expenses', type: AccountType.ASSET },
+        { code: '2100', name: 'Security Deposits Payable', type: AccountType.LIABILITY },
+        { code: '2200', name: 'Accounts Payable', type: AccountType.LIABILITY },
+        { code: '2300', name: 'Accrued Expenses', type: AccountType.LIABILITY },
+        { code: '3000', name: 'Owner Equity', type: AccountType.EQUITY },
+        { code: '3100', name: 'Retained Earnings', type: AccountType.EQUITY },
+        { code: '4100', name: 'Rental Income', type: AccountType.REVENUE },
+        { code: '4200', name: 'Late Fees', type: AccountType.REVENUE },
+        { code: '4300', name: 'Application Fees', type: AccountType.REVENUE },
+        { code: '4400', name: 'Other Income', type: AccountType.REVENUE },
+        { code: '5100', name: 'Maintenance & Repairs', type: AccountType.EXPENSE },
+        { code: '5200', name: 'Utilities', type: AccountType.EXPENSE },
+        { code: '5300', name: 'Insurance', type: AccountType.EXPENSE },
+        { code: '5400', name: 'Property Taxes', type: AccountType.EXPENSE },
+        { code: '5500', name: 'Management Fees', type: AccountType.EXPENSE },
+        { code: '5600', name: 'Landscaping', type: AccountType.EXPENSE },
     ];
 
     for (const entity of [entity1, entity2]) {
