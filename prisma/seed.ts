@@ -1,5 +1,5 @@
 // prisma/seed.ts - Updated for enhanced schema
-import { PrismaClient, AccountType, UserRole, UserStatus, LeaseStatus, MaintenanceStatus, MaintenancePriority, InvoiceStatus, InvoiceType, PaymentMethod, PaymentStatus, ExpenseType, PropertyType, SpaceType, SpaceStatus } from '@prisma/client';
+import { PrismaClient, AccountType, UserRole, UserStatus, LeaseStatus, MaintenanceStatus, MaintenancePriority, InvoiceStatus, InvoiceType, PaymentMethod, PaymentStatus, ExpenseType, PropertyType, SpaceType, SpaceStatus, BankAccountType } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -515,7 +515,7 @@ async function main() {
                 accountName: `${entity.name} Operating Account`,
                 accountNumber: '****' + Math.floor(Math.random() * 9999).toString().padStart(4, '0'),
                 bankName: 'Austin Community Bank',
-                accountType: 'Checking',
+                accountType: BankAccountType.CHECKING,
                 currentBalance: 50000 + Math.random() * 100000
             }
         });
@@ -526,7 +526,7 @@ async function main() {
                 accountName: `${entity.name} Security Deposits`,
                 accountNumber: '****' + Math.floor(Math.random() * 9999).toString().padStart(4, '0'),
                 bankName: 'Austin Community Bank',
-                accountType: 'Savings',
+                accountType: BankAccountType.SAVINGS,
                 currentBalance: 25000 + Math.random() * 50000
             }
         });

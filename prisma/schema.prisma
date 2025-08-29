@@ -8,29 +8,28 @@ datasource db {
 }
 
 model Organization {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  address     String?
-  phone       String?
-  email       String?
-  website     String?
-  logoUrl     String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
+  id                   String                @id @default(cuid())
+  name                 String
+  description          String?
+  address              String?
+  phone                String?
+  email                String?
+  website              String?
+  logoUrl              String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
   entities             Entity[]
-  tenants              Tenant[]
-  users                User[]
-  userInvitations      UserInvitation[]
   organizationSettings OrganizationSetting[]
   passwordPolicy       PasswordPolicy?
+  tenants              Tenant[]
+  userInvitations      UserInvitation[]
+  users                User[]
 
   @@map("organizations")
 }
 
 model Entity {
-  id             String    @id @default(cuid())
+  id             String         @id @default(cuid())
   name           String
   legalName      String?
   entityType     String?
@@ -38,65 +37,57 @@ model Entity {
   address        String?
   phone          String?
   email          String?
-  fax            String?
-  website        String?
   organizationId String
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  isActive       Boolean   @default(true)
-  isVerified     Boolean   @default(false)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  isActive       Boolean        @default(true)
+  isVerified     Boolean        @default(false)
   verifiedAt     DateTime?
   description    String?
-
-  bankLedgers   BankLedger[]
-  chartAccounts ChartAccount[]
-  organization  Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  properties    Property[]
-  userEntities  UserEntity[]
-  vendors       Vendor[]
-  users         User[]           @relation("UserEntities")
-  // Enhanced Relations
-  invoices      Invoice[]
-  payments      Payment[]
+  fax            String?
+  website        String?
+  bankLedgers    BankLedger[]
+  chartAccounts  ChartAccount[]
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoices       Invoice[]
+  payments       Payment[]
+  properties     Property[]
+  userEntities   UserEntity[]
+  vendors        Vendor[]
+  ledgerEntries  LedgerEntry[]
+  users          User[]         @relation("UserEntities")
 
   @@map("entities")
 }
 
 model Property {
-  id           String       @id @default(cuid())
-  name         String
-  address      String
-  city         String
-  state        String
-  zipCode      String
-  propertyType PropertyType @default(RESIDENTIAL)
-  description  String?
-  totalSpaces  Int          @default(1)
-
-  // Financial Fields
-  purchasePrice      Decimal? @db.Decimal(12, 2)
-  currentMarketValue Decimal? @db.Decimal(12, 2)
-
-  // Property Details
-  yearBuilt     Int?
-  squareFootage Int?
-  lotSize       Int?
-
-  entityId  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  maintenanceReqs  MaintenanceRequest[]
-  entity           Entity               @relation(fields: [entityId], references: [id], onDelete: Cascade)
-  propertyExpenses PropertyExpense[]
-  spaces           Space[]
-  leases           Lease[]
-  userProperties   UserProperty[]
-  images           PropertyImage[]
-  users            User[]               @relation("UserProperties")
-  // Enhanced Relations
-  invoices         Invoice[]
-  invoiceLineItems InvoiceLineItem[]
+  id                 String               @id @default(cuid())
+  name               String
+  address            String
+  city               String
+  state              String
+  zipCode            String
+  yearBuilt          Int?
+  description        String?
+  entityId           String
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  currentMarketValue Decimal?             @db.Decimal(12, 2)
+  lotSize            Int?
+  purchasePrice      Decimal?             @db.Decimal(12, 2)
+  squareFootage      Int?
+  totalSpaces        Int                  @default(1)
+  propertyType       PropertyType         @default(RESIDENTIAL)
+  invoiceLineItems   InvoiceLineItem[]
+  invoices           Invoice[]
+  leases             Lease[]
+  maintenanceReqs    MaintenanceRequest[]
+  entity             Entity               @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  propertyExpenses   PropertyExpense[]
+  images             PropertyImage[]
+  spaces             Space[]
+  userProperties     UserProperty[]
+  users              User[]               @relation("UserProperties")
 
   @@index([entityId])
   @@index([propertyType])
@@ -105,32 +96,27 @@ model Property {
 }
 
 model Space {
-  id     String      @id @default(cuid())
-  name   String // Unit identifier (e.g., "Unit 2A")
-  type   SpaceType   @default(UNIT)
-  status SpaceStatus @default(AVAILABLE)
-
-  // Space Details
-  squareFootage Int?
-  bedrooms      Int?
-  bathrooms     Decimal? @db.Decimal(3, 1)
-  rent          Decimal? @db.Decimal(10, 2)
-  deposit       Decimal? @db.Decimal(10, 2)
-  description   String?
-  amenities     String? // JSON string of amenities
-  floorNumber   Int?
-
-  propertyId String
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
+  id               String               @id @default(cuid())
+  bedrooms         Int?
+  bathrooms        Decimal?             @db.Decimal(3, 1)
+  description      String?
+  propertyId       String
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  amenities        String?
+  deposit          Decimal?             @db.Decimal(10, 2)
+  floorNumber      Int?
+  name             String
+  rent             Decimal?             @db.Decimal(10, 2)
+  squareFootage    Int?
+  status           SpaceStatus          @default(AVAILABLE)
+  type             SpaceType            @default(UNIT)
+  invoiceLineItems InvoiceLineItem[]
+  invoices         Invoice[]
   leases           Lease[]
   maintenanceReqs  MaintenanceRequest[]
-  property         Property             @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   spaceImages      SpaceImage[]
-  // Enhanced Relations
-  invoices         Invoice[]
-  invoiceLineItems InvoiceLineItem[]
+  property         Property             @relation(fields: [propertyId], references: [id], onDelete: Cascade)
 
   @@index([propertyId])
   @@index([status])
@@ -139,57 +125,51 @@ model Space {
 }
 
 model User {
-  id             String     @id @default(cuid())
-  email          String     @unique
-  passwordHash   String
-  firstName      String
-  lastName       String
-  phone          String?
-  role           UserRole   @default(TENANT)
-  status         UserStatus @default(PENDING)
-  organizationId String
-  lastLoginAt    DateTime?
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
-  emailVerified  Boolean    @default(false)
-  inviteExpires  DateTime?
-  inviteToken    String?    @unique
-  invitedBy      String?
-
-  // Profile fields
-  title                 String?
-  department            String?
-  bio                   String?
-  profilePhotoUrl       String?
-  phoneWork             String?
-  phoneEmergency        String?
-  address               String?
-  dateOfBirth           DateTime?
-  emergencyContactName  String?
-  emergencyContactPhone String?
-  startDate             DateTime?
-
+  id                     String                  @id @default(cuid())
+  email                  String                  @unique
+  passwordHash           String
+  firstName              String
+  lastName               String
+  phone                  String?
+  role                   UserRole                @default(TENANT)
+  status                 UserStatus              @default(PENDING)
+  organizationId         String
+  lastLoginAt            DateTime?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  emailVerified          Boolean                 @default(false)
+  inviteExpires          DateTime?
+  inviteToken            String?                 @unique
+  invitedBy              String?
+  address                String?
+  bio                    String?
+  dateOfBirth            DateTime?
+  department             String?
+  emergencyContactName   String?
+  emergencyContactPhone  String?
+  phoneEmergency         String?
+  phoneWork              String?
+  profilePhotoUrl        String?
+  startDate              DateTime?
+  title                  String?
+  invoiceAttachments     InvoiceAttachment[]     @relation("InvoiceAttachmentUploader")
+  invoicesTenant         Invoice[]               @relation("InvoiceTenant")
   leases                 Lease[]
   ledgerEntries          LedgerEntry[]
+  maintenanceAssignments MaintenanceAssignment[] @relation("MaintenanceAssignments")
   maintenanceReqs        MaintenanceRequest[]
+  passwordHistory        PasswordHistory[]
+  paymentAttachments     PaymentAttachment[]     @relation("PaymentAttachmentUploader")
+  paymentsAsPayer        Payment[]               @relation("PaymentPayer")
+  settingsAudits         SettingsAudit[]
   tenantProfile          Tenant?
   userEntities           UserEntity[]
+  sentInvitations        UserInvitation[]        @relation("UserInvitations")
   userProperties         UserProperty[]
   userSettings           UserSetting[]
-  settingsAudits         SettingsAudit[]
-  passwordHistory        PasswordHistory[]
-  maintenanceAssignments MaintenanceAssignment[] @relation("MaintenanceAssignments")
-
-  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  entities        Entity[]         @relation("UserEntities")
-  properties      Property[]       @relation("UserProperties")
-  sentInvitations UserInvitation[] @relation("UserInvitations")
-
-  // Enhanced Relations for Invoices & Payments
-  invoicesTenant     Invoice[]           @relation("InvoiceTenant")
-  paymentsAsPayer    Payment[]           @relation("PaymentPayer")
-  invoiceAttachments InvoiceAttachment[] @relation("InvoiceAttachmentUploader")
-  paymentAttachments PaymentAttachment[] @relation("PaymentAttachmentUploader")
+  organization           Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  entities               Entity[]                @relation("UserEntities")
+  properties             Property[]              @relation("UserProperties")
 
   @@map("users")
 }
@@ -199,9 +179,8 @@ model UserEntity {
   userId    String
   entityId  String
   createdAt DateTime @default(now())
-
-  entity Entity @relation(fields: [entityId], references: [id], onDelete: Cascade)
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entity    Entity   @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, entityId])
   @@map("user_entities")
@@ -212,9 +191,8 @@ model UserProperty {
   userId     String
   propertyId String
   createdAt  DateTime @default(now())
-
-  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, propertyId])
   @@map("user_properties")
@@ -235,9 +213,8 @@ model UserInvitation {
   expiresAt      DateTime
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  invitedBy    User         @relation("UserInvitations", fields: [invitedById], references: [id])
+  invitedBy      User             @relation("UserInvitations", fields: [invitedById], references: [id])
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([token])
   @@index([email])
@@ -247,30 +224,29 @@ model UserInvitation {
 }
 
 model Lease {
-  id                String      @id @default(cuid())
+  id                String         @id @default(cuid())
   spaceId           String
-  propertyId        String
   tenantId          String
   startDate         DateTime
   endDate           DateTime
-  monthlyRent       Decimal     @db.Decimal(10, 2)
-  securityDeposit   Decimal     @db.Decimal(10, 2)
-  status            LeaseStatus @default(ACTIVE)
+  monthlyRent       Decimal        @db.Decimal(10, 2)
+  securityDeposit   Decimal        @db.Decimal(10, 2)
+  status            LeaseStatus    @default(ACTIVE)
+  nnnExpenses       Decimal?       @db.Decimal(10, 2)
+  utilitiesIncluded Boolean        @default(false)
+  petDeposit        Decimal?       @db.Decimal(10, 2)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  propertyId        String
   renewalTerms      String?
   specialTerms      String?
-  nnnExpenses       Decimal?    @db.Decimal(10, 2)
-  utilitiesIncluded Boolean     @default(false)
-  petDeposit        Decimal?    @db.Decimal(10, 2)
-  createdAt         DateTime    @default(now())
-  updatedAt         DateTime    @updatedAt
-
-  invoices      Invoice[]
-  leaseRenewals LeaseRenewal[]
-  space         Space          @relation(fields: [spaceId], references: [id], onDelete: Cascade)
-  property      Property       @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  tenant        User           @relation(fields: [tenantId], references: [id])
-  rentIncreases RentIncrease[]
-  rentPayments  RentPayment[]
+  invoices          Invoice[]
+  leaseRenewals     LeaseRenewal[]
+  property          Property       @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  space             Space          @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  tenant            User           @relation(fields: [tenantId], references: [id])
+  rentIncreases     RentIncrease[]
+  rentPayments      RentPayment[]
 
   @@index([spaceId])
   @@index([propertyId])
@@ -286,8 +262,7 @@ model LeaseRenewal {
   newMonthlyRent Decimal  @db.Decimal(10, 2)
   renewedAt      DateTime @default(now())
   notes          String?
-
-  lease Lease @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+  lease          Lease    @relation(fields: [leaseId], references: [id], onDelete: Cascade)
 
   @@map("lease_renewals")
 }
@@ -302,234 +277,184 @@ model RentIncrease {
   effectiveDate   DateTime
   reason          String?
   createdAt       DateTime @default(now())
-
-  lease Lease @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+  lease           Lease    @relation(fields: [leaseId], references: [id], onDelete: Cascade)
 
   @@map("rent_increases")
 }
 
 model ChartAccount {
-  id          String   @id @default(cuid())
-  entityId    String
-  accountCode String
-  accountName String
-  accountType AccountType
-  description String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
+  id               String            @id @default(cuid())
+  entityId         String
+  accountCode      String
+  accountName      String
+  description      String?
+  isActive         Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  accountType      AccountType
+  parentId         String?
   entity           Entity            @relation(fields: [entityId], references: [id], onDelete: Cascade)
-  ledgerEntries    LedgerEntry[]
+  parent           ChartAccount?     @relation("ChartAccountParent", fields: [parentId], references: [id])
+  children         ChartAccount[]    @relation("ChartAccountParent")
   invoiceLineItems InvoiceLineItem[]
+  ledgerEntries    LedgerEntry[]
 
   @@unique([entityId, accountCode])
   @@map("chart_of_accounts")
 }
 
 model BankLedger {
-  id             String   @id @default(cuid())
+  id             String          @id @default(cuid())
   entityId       String
   accountName    String
   accountNumber  String?
   bankName       String?
-  accountType    String
-  currentBalance Decimal  @default(0) @db.Decimal(15, 2)
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  entity        Entity        @relation(fields: [entityId], references: [id], onDelete: Cascade)
-  ledgerEntries LedgerEntry[]
-  Payment       Payment[]
+  currentBalance Decimal         @default(0) @db.Decimal(15, 2)
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  accountType    BankAccountType
+  routingNumber  String?
+  notes          String?
+  entity         Entity          @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  ledgerEntries  LedgerEntry[]
+  Payment        Payment[]
 
   @@map("bank_ledgers")
 }
 
 model LedgerEntry {
-  id               String          @id @default(cuid())
-  bankLedgerId     String
-  chartAccountId   String
-  transactionType  TransactionType
-  amount           Decimal         @db.Decimal(15, 2)
-  description      String
-  referenceNumber  String?
-  transactionDate  DateTime
-  reconciled       Boolean         @default(false)
-  reconciledAt     DateTime?
-  createdById      String
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
-
-  bankLedger     BankLedger     @relation(fields: [bankLedgerId], references: [id])
-  chartAccount   ChartAccount @relation(fields: [chartAccountId], references: [id]) 
-  createdBy      User           @relation(fields: [createdById], references: [id])
+  id              String          @id @default(cuid())
+  bankLedgerId    String
+  transactionType TransactionType
+  amount          Decimal         @db.Decimal(15, 2)
+  description     String
+  entityId        String?
+  entryType       EntryType?      @default(MANUAL)
+  debitAmount     Decimal?        @default(0) @db.Decimal(15, 2)
+  creditAmount    Decimal?        @default(0) @db.Decimal(15, 2)
+  referenceId     String?
+  referenceNumber String?
+  transactionDate DateTime
+  reconciled      Boolean         @default(false)
+  reconciledAt    DateTime?
+  createdById     String
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  chartAccountId  String
+  bankLedger      BankLedger      @relation(fields: [bankLedgerId], references: [id])
+  chartAccount    ChartAccount    @relation(fields: [chartAccountId], references: [id])
+  users           User            @relation(fields: [createdById], references: [id])
+  entity          Entity?         @relation(fields: [entityId], references: [id])
 
   @@map("ledger_entries")
 }
 
 model Invoice {
-  id            String      @id @default(cuid())
-  entityId      String
-  invoiceNumber String      @unique
-  invoiceType   InvoiceType @default(RENT)
-
-  // Customer Information
-  tenantId      String?
-  vendorId      String?
-  customerName  String? // For non-tenant invoices
-  customerEmail String?
-
-  // Property Information
-  propertyId String?
-  spaceId    String?
-  leaseId    String?
-
-  // Invoice Details
-  issueDate DateTime?
-  dueDate   DateTime
-
-  // Financial Information
-  subtotal       Decimal @default(0.00) @db.Decimal(15, 2)
-  taxAmount      Decimal @default(0.00) @db.Decimal(15, 2)
-  discountAmount Decimal @default(0.00) @db.Decimal(15, 2)
-  totalAmount    Decimal @default(0.00) @db.Decimal(15, 2)
-  paidAmount     Decimal @default(0.00) @db.Decimal(15, 2)
-  balanceAmount  Decimal @default(0.00) @db.Decimal(15, 2)
-
-  // Status & Processing
-  status InvoiceStatus @default(DRAFT)
-
-  // Additional Information
-  description   String?
-  terms         String?
-  memo          String?
-  internalNotes String?
-
-  // Recurring Invoice
-  isRecurring     Boolean @default(false)
-  parentInvoiceId String?
-  recurringRule   String? // JSON string for recurrence rules
-
-  // Late Fees
-  lateFeeApplied Boolean  @default(false)
-  lateFeeDays    Int?
-  lateFeeAmount  Decimal? @db.Decimal(15, 2)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  entity   Entity    @relation(fields: [entityId], references: [id], onDelete: Cascade)
-  tenant   User?     @relation("InvoiceTenant", fields: [tenantId], references: [id])
-  vendor   Vendor?   @relation(fields: [vendorId], references: [id])
-  property Property? @relation(fields: [propertyId], references: [id])
-  space    Space?    @relation(fields: [spaceId], references: [id])
-  lease    Lease?    @relation(fields: [leaseId], references: [id])
-
-  // Enhanced Relations
-  lineItems           InvoiceLineItem[]
-  paymentApplications PaymentApplication[]
+  id                  String               @id @default(cuid())
+  leaseId             String?
+  invoiceNumber       String               @unique
+  invoiceType         InvoiceType          @default(RENT)
+  dueDate             DateTime
+  status              InvoiceStatus        @default(DRAFT)
+  description         String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  balanceAmount       Decimal              @default(0.00) @db.Decimal(15, 2)
+  customerEmail       String?
+  customerName        String?
+  discountAmount      Decimal              @default(0.00) @db.Decimal(15, 2)
+  entityId            String
+  internalNotes       String?
+  isRecurring         Boolean              @default(false)
+  issueDate           DateTime?
+  lateFeeAmount       Decimal?             @db.Decimal(15, 2)
+  lateFeeApplied      Boolean              @default(false)
+  lateFeeDays         Int?
+  memo                String?
+  paidAmount          Decimal              @default(0.00) @db.Decimal(15, 2)
+  parentInvoiceId     String?
+  propertyId          String?
+  recurringRule       String?
+  spaceId             String?
+  subtotal            Decimal              @default(0.00) @db.Decimal(15, 2)
+  taxAmount           Decimal              @default(0.00) @db.Decimal(15, 2)
+  tenantId            String?
+  terms               String?
+  totalAmount         Decimal              @default(0.00) @db.Decimal(15, 2)
+  vendorId            String?
   attachments         InvoiceAttachment[]
+  lineItems           InvoiceLineItem[]
+  entity              Entity               @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  lease               Lease?               @relation(fields: [leaseId], references: [id])
   parentInvoice       Invoice?             @relation("InvoiceRecurring", fields: [parentInvoiceId], references: [id])
   childInvoices       Invoice[]            @relation("InvoiceRecurring")
+  property            Property?            @relation(fields: [propertyId], references: [id])
+  space               Space?               @relation(fields: [spaceId], references: [id])
+  tenant              User?                @relation("InvoiceTenant", fields: [tenantId], references: [id])
+  vendor              Vendor?              @relation(fields: [vendorId], references: [id])
+  paymentApplications PaymentApplication[]
 
   @@map("invoices")
 }
 
-// ===== INVOICE LINE ITEMS =====
 model InvoiceLineItem {
-  id         String @id @default(cuid())
-  invoiceId  String
-  lineNumber Int
-
-  // Item Details
-  description String
-  quantity    Decimal @default(1.00) @db.Decimal(10, 2)
-  unitPrice   Decimal @db.Decimal(15, 2)
-  lineTotal   Decimal @db.Decimal(15, 2) // quantity * unitPrice
-
-  // Accounting
+  id             String        @id @default(cuid())
+  invoiceId      String
+  lineNumber     Int
+  description    String
+  quantity       Decimal       @default(1.00) @db.Decimal(10, 2)
+  unitPrice      Decimal       @db.Decimal(15, 2)
+  lineTotal      Decimal       @db.Decimal(15, 2)
+  propertyId     String?
+  spaceId        String?
+  itemCode       String?
+  startDate      DateTime?
+  endDate        DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
   chartAccountId String?
-
-  // Property/Unit Allocation
-  propertyId String?
-  spaceId    String?
-
-  // Additional Information
-  itemCode  String?
-  startDate DateTime? // For rent periods
-  endDate   DateTime? // For rent periods
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  invoice        Invoice         @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  chartAccount   ChartAccount?   @relation(fields: [chartAccountId], references: [id])
-  property       Property?       @relation(fields: [propertyId], references: [id])
-  space          Space?          @relation(fields: [spaceId], references: [id])
+  chartAccount   ChartAccount? @relation(fields: [chartAccountId], references: [id])
+  invoice        Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  property       Property?     @relation(fields: [propertyId], references: [id])
+  space          Space?        @relation(fields: [spaceId], references: [id])
 
   @@unique([invoiceId, lineNumber])
   @@map("invoice_line_items")
 }
 
-// ===== ENHANCED PAYMENTS MODEL =====
 model Payment {
-  id            String @id @default(cuid())
-  entityId      String
-  paymentNumber String @unique
-
-  // Payment Source
-  paymentType   PaymentType
-  paymentMethod PaymentMethod
-
-  // Payer Information
-  payerId    String? // User ID (tenant)
-  payerName  String
-  payerEmail String?
-
-  // Payment Details
-  amount       Decimal   @db.Decimal(15, 2)
-  paymentDate  DateTime  @default(now())
-  receivedDate DateTime?
-
-  // Bank Information
-  bankLedgerId    String?
-  referenceNumber String? // Check number, transaction ID
-
-  // Status & Processing
-  status           PaymentStatus           @default(PENDING)
-  processingStatus PaymentProcessingStatus @default(UNPROCESSED)
-
-  // Fees
-  processingFee Decimal? @db.Decimal(15, 2)
-
-  // Failure Information
-  failureReason String?
-  retryCount    Int       @default(0)
-  nextRetryDate DateTime?
-
-  // Deposit Information
-  depositId   String?
-  isDeposited Boolean   @default(false)
-  depositDate DateTime?
-
-  // Additional Information
-  memo          String?
-  internalNotes String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  entity     Entity      @relation(fields: [entityId], references: [id], onDelete: Cascade)
-  payer      User?       @relation("PaymentPayer", fields: [payerId], references: [id])
-  bankLedger BankLedger? @relation(fields: [bankLedgerId], references: [id])
-
-  // Enhanced Relations
+  id                  String                  @id @default(cuid())
+  amount              Decimal                 @db.Decimal(15, 2)
+  paymentDate         DateTime                @default(now())
+  paymentMethod       PaymentMethod
+  status              PaymentStatus           @default(PENDING)
+  referenceNumber     String?
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+  bankLedgerId        String?
+  depositDate         DateTime?
+  depositId           String?
+  entityId            String
+  failureReason       String?
+  internalNotes       String?
+  isDeposited         Boolean                 @default(false)
+  memo                String?
+  nextRetryDate       DateTime?
+  payerEmail          String?
+  payerId             String?
+  payerName           String
+  paymentNumber       String                  @unique
+  paymentType         PaymentType
+  processingFee       Decimal?                @db.Decimal(15, 2)
+  processingStatus    PaymentProcessingStatus @default(UNPROCESSED)
+  receivedDate        DateTime?
+  retryCount          Int                     @default(0)
   paymentApplications PaymentApplication[]
   attachments         PaymentAttachment[]
+  bankLedger          BankLedger?             @relation(fields: [bankLedgerId], references: [id])
+  entity              Entity                  @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  payer               User?                   @relation("PaymentPayer", fields: [payerId], references: [id])
 
   @@map("payments")
 }
@@ -548,97 +473,86 @@ model RentPayment {
   notes           String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
-
-  lease Lease @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+  lease           Lease         @relation(fields: [leaseId], references: [id], onDelete: Cascade)
 
   @@map("rent_payments")
 }
 
-// ===== PAYMENT APPLICATION (APPLICATION TO INVOICES) =====
 model PaymentApplication {
-  id        String @id @default(cuid())
-  paymentId String
-  invoiceId String
-
+  id            String   @id @default(cuid())
+  paymentId     String
+  invoiceId     String
   appliedAmount Decimal  @db.Decimal(15, 2)
   appliedDate   DateTime @default(now())
-
-  // Additional Information
-  notes String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  invoice       Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  payment       Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
 
   @@unique([paymentId, invoiceId])
   @@map("payment_applications")
 }
 
 model MaintenanceRequest {
-  id            String              @id @default(cuid())
+  id            String                  @id @default(cuid())
   propertyId    String
   spaceId       String?
   tenantId      String
   title         String
   description   String
-  priority      MaintenancePriority @default(MEDIUM)
-  status        MaintenanceStatus   @default(OPEN)
-  estimatedCost Decimal?            @db.Decimal(10, 2)
-  actualCost    Decimal?            @db.Decimal(10, 2)
-  requestedAt   DateTime            @default(now())
+  priority      MaintenancePriority     @default(MEDIUM)
+  status        MaintenanceStatus       @default(OPEN)
+  estimatedCost Decimal?                @db.Decimal(10, 2)
+  actualCost    Decimal?                @db.Decimal(10, 2)
+  requestedAt   DateTime                @default(now())
   completedAt   DateTime?
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
-
-  assignments MaintenanceAssignment[]
-  property    Property                @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  space       Space?                  @relation(fields: [spaceId], references: [id])
-  tenant      User                    @relation(fields: [tenantId], references: [id])
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+  assignments   MaintenanceAssignment[]
+  property      Property                @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  space         Space?                  @relation(fields: [spaceId], references: [id])
+  tenant        User                    @relation(fields: [tenantId], references: [id])
 
   @@map("maintenance_requests")
 }
 
 model Vendor {
-  id            String   @id @default(cuid())
-  name          String
-  description   String?
-  vendorType    String
-  contactName   String?
-  phone         String?
-  email         String?
-  address       String?
-  licenseNumber String?
-  isInsured     Boolean  @default(false)
-  isActive      Boolean  @default(true)
-  entityId      String
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  maintenanceAssignments MaintenanceAssignment[]
+  id                     String                  @id @default(cuid())
+  name                   String
+  description            String?
+  vendorType             String
+  contactName            String?
+  phone                  String?
+  email                  String?
+  address                String?
+  licenseNumber          String?
+  isInsured              Boolean                 @default(false)
+  isActive               Boolean                 @default(true)
+  entityId               String
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
   invoices               Invoice[]
+  maintenanceAssignments MaintenanceAssignment[]
   entity                 Entity                  @relation(fields: [entityId], references: [id], onDelete: Cascade)
 
   @@map("vendors")
 }
 
 model MaintenanceAssignment {
-  id               String           @id @default(cuid())
-  maintenanceReqId String
-  vendorId         String?
-  assignedUserId   String?
-  assignedAt       DateTime         @default(now())
-  scheduledDate    DateTime?
-  completedAt      DateTime?
-  notes            String?
-  cost             Decimal?         @db.Decimal(10, 2)
-  status           AssignmentStatus @default(ASSIGNED)
-
+  id                 String             @id @default(cuid())
+  maintenanceReqId   String
+  vendorId           String?
+  assignedAt         DateTime           @default(now())
+  scheduledDate      DateTime?
+  completedAt        DateTime?
+  notes              String?
+  cost               Decimal?           @db.Decimal(10, 2)
+  assignedUserId     String?
+  status             AssignmentStatus   @default(ASSIGNED)
+  assignedUser       User?              @relation("MaintenanceAssignments", fields: [assignedUserId], references: [id])
   maintenanceRequest MaintenanceRequest @relation(fields: [maintenanceReqId], references: [id], onDelete: Cascade)
   vendor             Vendor?            @relation(fields: [vendorId], references: [id], onDelete: Cascade)
-  assignedUser       User?              @relation("MaintenanceAssignments", fields: [assignedUserId], references: [id])
 
   @@map("maintenance_assignments")
 }
@@ -655,15 +569,14 @@ model PropertyExpense {
   allocateToTenants Boolean     @default(false)
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
-
-  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  property          Property    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
 
   @@map("property_expenses")
 }
 
 model Tenant {
-  id                    String    @id @default(cuid())
-  userId                String?   @unique
+  id                    String       @id @default(cuid())
+  userId                String?      @unique
   firstName             String
   lastName              String
   email                 String
@@ -672,20 +585,19 @@ model Tenant {
   emergencyContactPhone String?
   dateOfBirth           DateTime?
   ssn                   String?
-  isBusinessTenant      Boolean   @default(false)
+  isBusinessTenant      Boolean      @default(false)
   businessName          String?
   businessTaxId         String?
   previousLandlord      String?
   employerInfo          String?
-  monthlyIncome         Decimal?  @db.Decimal(10, 2)
+  monthlyIncome         Decimal?     @db.Decimal(10, 2)
   organizationId        String
-  isActive              Boolean   @default(true)
+  isActive              Boolean      @default(true)
   notes                 String?
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-
-  organization Organization @relation(fields: [organizationId], references: [id])
-  user         User?        @relation(fields: [userId], references: [id])
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  organization          Organization @relation(fields: [organizationId], references: [id])
+  user                  User?        @relation(fields: [userId], references: [id])
 
   @@map("tenants")
 }
@@ -698,24 +610,22 @@ model UserSetting {
   category     String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, settingKey])
   @@map("user_settings")
 }
 
 model OrganizationSetting {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
   organizationId String
   settingKey     String
   settingValue   String
   category       String
-  isUserEditable Boolean  @default(false)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  isUserEditable Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, settingKey])
   @@map("organization_settings")
@@ -733,28 +643,26 @@ model SettingsAudit {
   ipAddress  String?
   userAgent  String?
   createdAt  DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id])
+  user       User     @relation(fields: [userId], references: [id])
 
   @@map("settings_audit")
 }
 
 model PasswordPolicy {
-  id              String   @id @default(cuid())
-  organizationId  String   @unique
-  minLength       Int      @default(8)
-  requireUpper    Boolean  @default(true)
-  requireLower    Boolean  @default(true)
-  requireNumbers  Boolean  @default(true)
-  requireSymbols  Boolean  @default(false)
+  id              String       @id @default(cuid())
+  organizationId  String       @unique
+  minLength       Int          @default(8)
+  requireUpper    Boolean      @default(true)
+  requireLower    Boolean      @default(true)
+  requireNumbers  Boolean      @default(true)
+  requireSymbols  Boolean      @default(false)
   maxAge          Int?
-  historyCount    Int      @default(5)
-  lockoutAttempts Int      @default(5)
-  lockoutDuration Int      @default(30)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  historyCount    Int          @default(5)
+  lockoutAttempts Int          @default(5)
+  lockoutDuration Int          @default(30)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("password_policies")
 }
@@ -764,8 +672,7 @@ model PasswordHistory {
   userId       String
   passwordHash String
   createdAt    DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("password_history")
 }
@@ -781,8 +688,7 @@ model PropertyImage {
   isPrimary  Boolean  @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
-
-  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
 
   @@index([propertyId])
   @@map("property_images")
@@ -799,46 +705,38 @@ model SpaceImage {
   isPrimary Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  space Space @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  space     Space    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
 
   @@index([spaceId])
   @@map("space_images")
 }
 
-// ===== ATTACHMENTS =====
 model InvoiceAttachment {
-  id         String  @id @default(cuid())
+  id         String   @id @default(cuid())
   invoiceId  String
   fileName   String
   fileUrl    String
   fileSize   Int?
   mimeType   String?
   uploadedBy String?
-
-  createdAt DateTime @default(now())
-
-  // Relations
-  invoice  Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  uploader User?   @relation("InvoiceAttachmentUploader", fields: [uploadedBy], references: [id])
+  createdAt  DateTime @default(now())
+  invoice    Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  uploader   User?    @relation("InvoiceAttachmentUploader", fields: [uploadedBy], references: [id])
 
   @@map("invoice_attachments")
 }
 
 model PaymentAttachment {
-  id         String  @id @default(cuid())
+  id         String   @id @default(cuid())
   paymentId  String
   fileName   String
   fileUrl    String
   fileSize   Int?
   mimeType   String?
   uploadedBy String?
-
-  createdAt DateTime @default(now())
-
-  // Relations
-  payment  Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-  uploader User?   @relation("PaymentAttachmentUploader", fields: [uploadedBy], references: [id])
+  createdAt  DateTime @default(now())
+  payment    Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  uploader   User?    @relation("PaymentAttachmentUploader", fields: [uploadedBy], references: [id])
 
   @@map("payment_attachments")
 }
@@ -908,12 +806,12 @@ enum TransactionType {
 enum InvoiceStatus {
   DRAFT
   SENT
-  VIEWED
-  PARTIAL_PAYMENT
   PAID
   OVERDUE
-  VOID
   CANCELLED
+  VIEWED
+  PARTIAL_PAYMENT
+  VOID
 }
 
 enum InvoiceType {
@@ -949,11 +847,11 @@ enum PaymentMethod {
 
 enum PaymentStatus {
   PENDING
-  PROCESSING
   COMPLETED
   FAILED
-  CANCELLED
   REFUNDED
+  PROCESSING
+  CANCELLED
 }
 
 enum PaymentProcessingStatus {
@@ -1010,4 +908,22 @@ enum AccountType {
   EQUITY
   REVENUE
   EXPENSE
+}
+
+enum BankAccountType {
+  CHECKING
+  SAVINGS
+  MONEY_MARKET
+  CD
+  INVESTMENT
+}
+
+enum EntryType {
+  MANUAL
+  AUTOMATIC
+  PAYMENT
+  DEPOSIT
+  WITHDRAWAL
+  TRANSFER
+  RECONCILIATION
 }

@@ -80,14 +80,16 @@ export class FinancialsService {
     entityIds?: string[]
   ) {
     // You can add authorization logic here if needed
-    return this.prisma.bankLedger.create({
-      data: createBankLedgerDto,
-      include: {
-        entity: {
-          select: { id: true, name: true },
-        },
-      },
-    });
+    // return this.prisma.bankLedger.create({
+    //   data: createBankLedgerDto,
+    //   include: {
+    //     entity: {
+    //       select: { id: true, name: true },
+    //     },
+    //   },
+    // });
+    // Add this temporary return:
+    throw new Error('Bank ledger creation moved to banking module');
   }
 
   async findAllBankLedgers(query: FinancialQueryDto, userRole: UserRole, userOrgId: string, userEntities: string[]) {
@@ -169,7 +171,7 @@ export class FinancialsService {
                 accountType: true,
               },
             },
-            createdBy: {
+            users: {
               select: {
                 firstName: true,
                 lastName: true,
@@ -211,25 +213,27 @@ export class FinancialsService {
     // Check access permissions
     await this.verifyEntityAccess(bankLedger.entityId, userRole, userOrgId, userEntities);
 
-    const updatedBankLedger = await this.prisma.bankLedger.update({
-      where: { id },
-      data: updateBankLedgerDto,
-      include: {
-        entity: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        _count: {
-          select: {
-            ledgerEntries: true,
-          },
-        },
-      },
-    });
+    // const updatedBankLedger = await this.prisma.bankLedger.update({
+    //   where: { id },
+    //   data: updateBankLedgerDto,
+    //   include: {
+    //     entity: {
+    //       select: {
+    //         id: true,
+    //         name: true,
+    //       },
+    //     },
+    //     _count: {
+    //       select: {
+    //         ledgerEntries: true,
+    //       },
+    //     },
+    //   },
+    // });
 
-    return updatedBankLedger;
+    // return updatedBankLedger;
+    // Add this instead:
+    throw new Error('Bank ledger operations have been moved to the banking module');
   }
 
   async findBankLedgersByEntity(entityId: string) {
@@ -441,9 +445,6 @@ export class FinancialsService {
   }
 
   // ============= LEDGER ENTRIES =============
-
-
-
   async createLedgerEntry(createLedgerEntryDto: CreateLedgerEntryDto, userId: string, userRole: UserRole, userOrgId: string, userEntities: string[]) {
     // Check permissions
     if (userRole !== UserRole.SUPER_ADMIN && userRole !== UserRole.ORG_ADMIN && userRole !== UserRole.ENTITY_MANAGER && userRole !== UserRole.ACCOUNTANT) {
@@ -501,7 +502,7 @@ export class FinancialsService {
               accountType: true,
             },
           },
-          createdBy: {
+          users: {
             select: {
               firstName: true,
               lastName: true,
@@ -1293,7 +1294,7 @@ export class FinancialsService {
             accountType: true,
           },
         },
-        createdBy: {
+        users: {
           select: {
             firstName: true,
             lastName: true,
