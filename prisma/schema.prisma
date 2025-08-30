@@ -170,6 +170,8 @@ model User {
   organization           Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   entities               Entity[]                @relation("UserEntities")
   properties             Property[]              @relation("UserProperties")
+  importedStatements  BankStatement[]
+  reconciliations     BankReconciliation[]
 
   @@map("users")
 }
@@ -319,6 +321,8 @@ model BankLedger {
   entity         Entity          @relation(fields: [entityId], references: [id], onDelete: Cascade)
   ledgerEntries  LedgerEntry[]
   Payment        Payment[]
+  statements      BankStatement[]
+  reconciliations BankReconciliation[]
 
   @@map("bank_ledgers")
 }
@@ -346,6 +350,7 @@ model LedgerEntry {
   chartAccount    ChartAccount    @relation(fields: [chartAccountId], references: [id])
   users           User            @relation(fields: [createdById], references: [id])
   entity          Entity?         @relation(fields: [entityId], references: [id])
+  reconciliationMatch ReconciliationMatch?
 
   @@map("ledger_entries")
 }
@@ -739,6 +744,80 @@ model PaymentAttachment {
   uploader   User?    @relation("PaymentAttachmentUploader", fields: [uploadedBy], references: [id])
 
   @@map("payment_attachments")
+}
+
+model BankStatement {
+  id                  String   @id @default(cuid())
+  bankAccountId       String
+  statementStartDate  DateTime
+  statementEndDate    DateTime
+  openingBalance      Decimal  @db.Decimal(15, 2)
+  closingBalance      Decimal  @db.Decimal(15, 2)
+  statementReference  String?
+  importedById        String
+  importedAt          DateTime
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  bankAccount         BankLedger         @relation(fields: [bankAccountId], references: [id])
+  importedBy          User               @relation(fields: [importedById], references: [id])
+  transactions        BankTransaction[]
+  reconciliations     BankReconciliation[]
+
+  @@map("bank_statements")
+}
+
+model BankTransaction {
+  id               String          @id @default(cuid())
+  bankStatementId  String
+  transactionDate  DateTime
+  amount           Decimal         @db.Decimal(15, 2)
+  description      String
+  referenceNumber  String?
+  transactionType  String          // DEBIT, CREDIT
+  runningBalance   Decimal?        @db.Decimal(15, 2)
+  createdAt        DateTime        @default(now())
+
+  bankStatement    BankStatement         @relation(fields: [bankStatementId], references: [id])
+  reconciliationMatch ReconciliationMatch?
+
+  @@map("bank_transactions")
+}
+
+model BankReconciliation {
+  id                String   @id @default(cuid())
+  bankAccountId     String
+  bankStatementId   String
+  reconciliationDate DateTime
+  reconciledById    String
+  status            String   @default("IN_PROGRESS") // IN_PROGRESS, COMPLETED, CANCELLED
+  notes             String?
+  completedAt       DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  bankAccount       BankLedger            @relation(fields: [bankAccountId], references: [id])
+  bankStatement     BankStatement         @relation(fields: [bankStatementId], references: [id])
+  reconciledBy      User                  @relation(fields: [reconciledById], references: [id])
+  matches           ReconciliationMatch[]
+
+  @@map("bank_reconciliations")
+}
+
+model ReconciliationMatch {
+  id               String   @id @default(cuid())
+  reconciliationId String
+  ledgerEntryId    String   @unique  // Add @unique here
+  bankTransactionId String  @unique  // Add @unique here
+  matchNotes       String?
+  createdAt        DateTime @default(now())
+
+  reconciliation   BankReconciliation @relation(fields: [reconciliationId], references: [id])
+  ledgerEntry      LedgerEntry        @relation(fields: [ledgerEntryId], references: [id])
+  bankTransaction  BankTransaction    @relation(fields: [bankTransactionId], references: [id])
+
+  @@unique([ledgerEntryId, bankTransactionId])
+  @@map("reconciliation_matches")
 }
 
 enum UserRole {
