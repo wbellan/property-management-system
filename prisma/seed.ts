@@ -72,8 +72,8 @@ async function main() {
     data: {
       email: 'admin@demoproperties.com',
       passwordHash,
-      firstName: 'Super',
-      lastName: 'Admin',
+      firstName: 'Ward',
+      lastName: 'Bellan',
       role: 'SUPER_ADMIN',
       status: 'ACTIVE',
       organizationId: organization.id,
@@ -85,8 +85,8 @@ async function main() {
     data: {
       email: 'orgadmin@demoproperties.com',
       passwordHash,
-      firstName: 'Org',
-      lastName: 'Admin',
+      firstName: 'Gaet',
+      lastName: 'Bellan',
       role: 'ORG_ADMIN',
       status: 'ACTIVE',
       organizationId: organization.id,
@@ -98,8 +98,8 @@ async function main() {
     data: {
       email: 'manager@sunsetproperties.com',
       passwordHash,
-      firstName: 'Entity',
-      lastName: 'Manager',
+      firstName: 'Seb',
+      lastName: 'Bellan',
       role: 'ENTITY_MANAGER',
       status: 'ACTIVE',
       organizationId: organization.id,
@@ -111,8 +111,8 @@ async function main() {
     data: {
       email: 'tenant@example.com',
       passwordHash,
-      firstName: 'John',
-      lastName: 'Tenant',
+      firstName: 'Dre',
+      lastName: 'Bellan',
       role: 'TENANT',
       status: 'ACTIVE',
       organizationId: organization.id,

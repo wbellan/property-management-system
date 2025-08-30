@@ -10,6 +10,10 @@ import { LedgerEntriesService } from './services/ledger-entries.service';
 import { LedgerEntriesController } from './controllers/ledger-entries.controller';
 import { ReconciliationController } from './controllers/reconciliation.controller';
 import { ReconciliationService } from './services/reconciliation.service';
+import { FinancialReportsController } from './controllers/financial-reports.controller';
+import { AuditController } from './controllers/audit.controller';
+import { FinancialReportsService } from './services/financial-reports.service';
+import { AuditService } from './services/audit.service';
 
 @Module({
     imports: [PrismaModule],
@@ -18,6 +22,8 @@ import { ReconciliationService } from './services/reconciliation.service';
         ChartAccountsController,
         LedgerEntriesController,
         ReconciliationController,
+        FinancialReportsController,
+        AuditController
     ],
     providers: [
         BankLedgerService,
@@ -26,6 +32,8 @@ import { ReconciliationService } from './services/reconciliation.service';
         BalanceCalculatorService,
         DefaultChartSetupService,
         ReconciliationService,
+        FinancialReportsService,
+        AuditService
     ],
     exports: [
         BankLedgerService,
@@ -33,6 +41,8 @@ import { ReconciliationService } from './services/reconciliation.service';
         LedgerEntriesService,
         BalanceCalculatorService,
         ReconciliationService,
+        FinancialReportsService,
+        AuditService
     ],
 })
 
