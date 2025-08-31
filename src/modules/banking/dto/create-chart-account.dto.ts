@@ -38,17 +38,32 @@ export class CreateChartAccountDto {
 }
 
 export class UpdateChartAccountDto {
+    @ApiPropertyOptional({ description: 'Account code' })
+    @IsString()
+    @IsOptional()
+    accountCode?: string;
+
     @ApiPropertyOptional({ description: 'Account name' })
     @IsString()
     @IsOptional()
     accountName?: string;
+
+    @ApiPropertyOptional({ description: 'Account type' })
+    @IsEnum(ChartAccountType)
+    @IsOptional()
+    accountType: ChartAccountType;
 
     @ApiPropertyOptional({ description: 'Account description' })
     @IsString()
     @IsOptional()
     description?: string;
 
-    @ApiPropertyOptional({ description: 'Whether the account is active' })
+    @ApiPropertyOptional({ description: 'Account parent ID.' })
+    @IsString()
     @IsOptional()
-    isActive?: boolean;
+    parentId?: string;
+
+//     @ApiPropertyOptional({ description: 'Whether the account is active' })
+//     @IsOptional()
+//     isActive?: boolean;
 }
