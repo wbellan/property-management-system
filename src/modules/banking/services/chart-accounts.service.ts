@@ -118,7 +118,13 @@ export class ChartAccountsService {
             },
         });
 
-        return this.buildAccountHierarchy(accounts);
+        return accounts;
+        // return this.buildAccountHierarchy(accounts);
+    }
+
+    async findAllByEntityHierarchical(entityId: string, includeInactive = false) {
+       const accounts = await this.findAllByEntity(entityId, includeInactive);
+       return this.buildAccountHierarchy(accounts);
     }
 
     async findOne(entityId: string, id: string) {
