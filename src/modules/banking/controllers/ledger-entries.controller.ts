@@ -7,6 +7,8 @@ import {
     Query,
     UseGuards,
     Request,
+    Delete,
+    Patch,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { LedgerEntriesService } from '../services/ledger-entries.service';
@@ -47,7 +49,7 @@ export class LedgerEntriesController {
         return this.ledgerEntriesService.createEntry(
             entityId,
             createLedgerEntryDto,
-            req.user?.id || 'system'
+            req.user?.userId || 'system'
         );
     }
 
@@ -67,10 +69,12 @@ export class LedgerEntriesController {
         @Body() createMultipleDto: CreateMultipleLedgerEntriesDto,
         @Request() req: any,
     ) {
+        console.log('User trying to create ledger entries - req.user?.id', req.user?.id);
+        console.log('User trying to create ledger entries req.user.userId ', req.user?.userId);
         return this.ledgerEntriesService.createMultipleEntries(
             entityId,
             createMultipleDto,
-            req.user?.id || 'system'
+            req.user?.userId || 'system'
         );
     }
 
@@ -93,7 +97,7 @@ export class LedgerEntriesController {
         return this.ledgerEntriesService.createSimpleEntry(
             entityId,
             createSimpleDto,
-            req.user?.id || 'system'
+            req.user?.userId || 'system'
         );
     }
 
@@ -116,7 +120,7 @@ export class LedgerEntriesController {
         return this.ledgerEntriesService.recordPayment(
             entityId,
             recordPaymentDto,
-            req.user?.id || 'system'
+            req.user?.userId || 'system'
         );
     }
 
@@ -139,7 +143,7 @@ export class LedgerEntriesController {
         return this.ledgerEntriesService.recordCheckDeposit(
             entityId,
             recordCheckDepositDto,
-            req.user?.id || 'system'
+            req.user?.userId || 'system'
         );
     }
 
@@ -182,5 +186,96 @@ export class LedgerEntriesController {
         @Body() entries: CreateLedgerEntryDto[],
     ) {
         return this.ledgerEntriesService.validateDoubleEntry(entries);
+    }
+
+    @Get(':id')
+    @ApiOperation({ summary: 'Get a specific ledger entry' })
+    @ApiResponse({
+        status: 200,
+        description: 'Ledger entry retrieved successfully',
+    })
+    @ApiResponse({
+        status: 404,
+        description: 'Ledger entry not found',
+    })
+    @Roles('ENTITY_MANAGER', 'ORG_ADMIN', 'SUPER_ADMIN', 'ACCOUNTANT')
+    async findOne(
+        @Param('entityId') entityId: string,
+        @Param('id') id: string,
+    ) {
+        return this.ledgerEntriesService.findOne(entityId, id);
+    }
+
+    @Patch(':id')
+    @ApiOperation({ summary: 'Update a ledger entry' })
+    @ApiResponse({
+        status: 200,
+        description: 'Ledger entry updated successfully',
+    })
+    @ApiResponse({
+        status: 400,
+        description: 'Update validation failed',
+    })
+    @ApiResponse({
+        status: 404,
+        description: 'Ledger entry not found',
+    })
+    @Roles('ENTITY_MANAGER', 'ORG_ADMIN', 'SUPER_ADMIN')
+    async update(
+        @Param('entityId') entityId: string,
+        @Param('id') id: string,
+        @Body() updateLedgerEntryDto: any, // Define proper DTO
+        @Request() req: any,
+    ) {
+        return this.ledgerEntriesService.update(
+            entityId,
+            id,
+            updateLedgerEntryDto,
+            req.user?.userId || 'system'
+        );
+    }
+
+    @Delete(':id')
+    @ApiOperation({ summary: 'Delete a ledger entry' })
+    @ApiResponse({
+        status: 200,
+        description: 'Ledger entry deleted successfully',
+    })
+    @ApiResponse({
+        status: 404,
+        description: 'Ledger entry not found',
+    })
+    @Roles('ENTITY_MANAGER', 'ORG_ADMIN', 'SUPER_ADMIN')
+    async delete(
+        @Param('entityId') entityId: string,
+        @Param('id') id: string,
+        @Request() req: any,
+    ) {
+        return this.ledgerEntriesService.delete(
+            entityId,
+            id,
+            req.user?.userId || 'system'
+        );
+    }
+
+    @Delete()
+    @ApiOperation({ summary: 'Delete all ledger entries for an entity' })
+    @ApiResponse({
+        status: 200,
+        description: 'All ledger entries deleted successfully',
+    })
+    @ApiResponse({
+        status: 400,
+        description: 'Cannot delete entries with unresolved references',
+    })
+    @Roles('ENTITY_MANAGER', 'ORG_ADMIN', 'SUPER_ADMIN')
+    async deleteAll(
+        @Param('entityId') entityId: string,
+        @Request() req: any,
+    ) {
+        return this.ledgerEntriesService.deleteAll(
+            entityId,
+            req.user?.userId || 'system'
+        );
     }
 }

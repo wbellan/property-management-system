@@ -21,6 +21,8 @@ export class LedgerEntriesService {
     ) { }
 
     async createEntry(entityId: string, dto: CreateLedgerEntryDto, userId: string) {
+        console.log('Creating ledger entry:', dto);
+
         // Validate bank ledger belongs to entity
         const bankLedger = await this.prisma.bankLedger.findFirst({
             where: { id: dto.bankLedgerId, entityId },
@@ -51,40 +53,70 @@ export class LedgerEntriesService {
             throw new BadRequestException('Entry must have either debit or credit amount');
         }
 
-        // Create the ledger entry using your actual schema fields
+        // Determine transaction type and main amount
+        const transactionType = debitAmount.gt(0) ? 'DEBIT' : 'CREDIT';
+        const mainAmount = debitAmount.gt(0) ? debitAmount : creditAmount;
+
+        console.log('Creating entry with:', {
+            transactionType,
+            mainAmount: mainAmount.toString(),
+            debitAmount: debitAmount.toString(),
+            creditAmount: creditAmount.toString()
+        });
+
+        // Create the ledger entry with ALL fields properly populated
         const entry = await this.prisma.ledgerEntry.create({
             data: {
                 bankLedgerId: dto.bankLedgerId,
                 chartAccountId: dto.chartAccountId,
-                transactionType: dto.debitAmount !== '0' ? 'DEBIT' : 'CREDIT', // Use existing field
-                amount: debitAmount.gt(0) ? debitAmount : creditAmount, // Use existing field
+                transactionType: transactionType,
+                amount: mainAmount, // Main amount field
+                debitAmount: debitAmount, // Separate debit field
+                creditAmount: creditAmount, // Separate credit field
                 description: dto.description,
                 transactionDate: new Date(dto.transactionDate),
                 referenceNumber: dto.referenceNumber,
+                referenceId: dto.referenceId,
+                entryType: dto.entryType || 'MANUAL',
                 createdById: userId,
             },
             include: {
                 bankLedger: {
-                    select: { accountName: true },
+                    select: {
+                        id: true,
+                        accountName: true,
+                        entityId: true
+                    }
                 },
                 chartAccount: {
-                    select: { accountCode: true, accountName: true },
-                },
-                users: {
-                    select: { firstName: true, lastName: true },
+                    select: {
+                        id: true,
+                        accountCode: true,
+                        accountName: true,
+                        accountType: true
+                    }
                 },
             },
         });
 
-        // Update bank ledger balance
-        const netAmount = debitAmount.minus(creditAmount);
-        if (!netAmount.eq(0)) {
-            await this.bankLedgerService.updateBalance(
-                dto.bankLedgerId,
-                netAmount.abs(),
-                netAmount.gt(0) ? 'ADD' : 'SUBTRACT'
-            );
-        }
+        // Update bank balance
+        const balanceChange = transactionType === 'DEBIT' ? mainAmount : mainAmount.neg();
+        await this.prisma.bankLedger.update({
+            where: { id: dto.bankLedgerId },
+            data: {
+                currentBalance: {
+                    increment: balanceChange,
+                },
+            },
+        });
+
+        console.log('Created entry:', {
+            id: entry.id,
+            amount: entry.amount,
+            debitAmount: entry.debitAmount,
+            creditAmount: entry.creditAmount,
+            transactionType: entry.transactionType
+        });
 
         return entry;
     }
@@ -133,38 +165,44 @@ export class LedgerEntriesService {
                 const debitAmount = new Decimal(entryDto.debitAmount);
                 const creditAmount = new Decimal(entryDto.creditAmount);
 
-                // Create the entry using your actual schema
+                // Determine transaction type and main amount
+                const transactionType = debitAmount.gt(0) ? 'DEBIT' : 'CREDIT';
+                const mainAmount = debitAmount.gt(0) ? debitAmount : creditAmount;
+
+                // Create the entry with ALL fields populated correctly
                 const entry = await prisma.ledgerEntry.create({
                     data: {
                         bankLedgerId: entryDto.bankLedgerId,
                         chartAccountId: entryDto.chartAccountId,
-                        transactionType: debitAmount.gt(0) ? 'DEBIT' : 'CREDIT',
-                        amount: debitAmount.gt(0) ? debitAmount : creditAmount,
+                        transactionType: transactionType,
+                        amount: mainAmount, // Main amount
+                        debitAmount: debitAmount, // Separate debit amount
+                        creditAmount: creditAmount, // Separate credit amount
                         description: `${dto.transactionDescription} - ${entryDto.description}`,
                         transactionDate: new Date(entryDto.transactionDate),
                         referenceNumber: entryDto.referenceNumber,
+                        referenceId: entryDto.referenceId,
+                        entryType: entryDto.entryType || 'MANUAL',
                         createdById: userId,
                     },
                     include: {
-                        bankLedger: { select: { accountName: true } },
-                        chartAccount: { select: { accountCode: true, accountName: true } },
+                        bankLedger: { select: { id: true, accountName: true, entityId: true } },
+                        chartAccount: { select: { id: true, accountCode: true, accountName: true, accountType: true } },
                     },
                 });
 
                 createdEntries.push(entry);
 
                 // Update bank balance for this entry
-                const netAmount = debitAmount.minus(creditAmount);
-                if (!netAmount.eq(0)) {
-                    await prisma.bankLedger.update({
-                        where: { id: entryDto.bankLedgerId },
-                        data: {
-                            currentBalance: {
-                                [netAmount.gt(0) ? 'increment' : 'decrement']: netAmount.abs(),
-                            },
+                const balanceChange = transactionType === 'DEBIT' ? mainAmount : mainAmount.neg();
+                await prisma.bankLedger.update({
+                    where: { id: entryDto.bankLedgerId },
+                    data: {
+                        currentBalance: {
+                            increment: balanceChange,
                         },
-                    });
-                }
+                    },
+                });
             }
 
             return createdEntries;
@@ -318,33 +356,77 @@ export class LedgerEntriesService {
         entityId: string,
         bankLedgerId?: string,
         chartAccountId?: string,
-        limit = 50,
-        offset = 0
+        limit: number = 50,
+        offset: number = 0
     ) {
-        const where: any = {};
+        console.log(`🔍 Getting ledger entries for entity: ${entityId}`);
+        console.log(`   Filters - bankLedger: ${bankLedgerId}, chartAccount: ${chartAccountId}`);
 
-        if (bankLedgerId) where.bankLedgerId = bankLedgerId;
-        if (chartAccountId) where.chartAccountId = chartAccountId;
+        // Build proper WHERE clause that filters by entity through bankLedger relationship
+        const whereClause: any = {
+            bankLedger: {
+                entityId: entityId  // This ensures we only get entries for this entity
+            }
+        };
 
-        return this.prisma.ledgerEntry.findMany({
-            where,
+        // Add optional filters
+        if (bankLedgerId) {
+            whereClause.bankLedgerId = bankLedgerId;
+        }
+
+        if (chartAccountId) {
+            whereClause.chartAccountId = chartAccountId;
+        }
+
+        console.log(`🔍 Using WHERE clause:`, JSON.stringify(whereClause, null, 2));
+
+        // Get total count with same filter
+        const total = await this.prisma.ledgerEntry.count({
+            where: whereClause
+        });
+
+        console.log(`📊 Found ${total} total entries for entity ${entityId}`);
+
+        // Get entries with proper includes
+        const entries = await this.prisma.ledgerEntry.findMany({
+            where: whereClause,
             include: {
                 bankLedger: {
-                    select: { accountName: true, bankName: true },
+                    select: {
+                        id: true,
+                        accountName: true,
+                        entityId: true  // Include this to verify in logs
+                    }
                 },
                 chartAccount: {
-                    select: { accountCode: true, accountName: true },
-                },
-                users: {
-                    select: { firstName: true, lastName: true },
-                },
+                    select: {
+                        id: true,
+                        accountCode: true,
+                        accountName: true,
+                        accountType: true
+                    }
+                }
             },
             orderBy: {
-                transactionDate: 'desc',
+                transactionDate: 'desc'
             },
             take: limit,
-            skip: offset,
+            skip: offset
         });
+
+        console.log(`✅ Retrieved ${entries.length} entries for entity ${entityId}`);
+
+        // Debug: log first entry details
+        if (entries.length > 0) {
+            const first = entries[0];
+            console.log(`🔍 First entry - ID: ${first.id}, BankLedger Entity: ${first.bankLedger.entityId}`);
+        }
+
+        return {
+            entries,
+            total,
+            hasMore: offset + entries.length < total
+        };
     }
 
     async validateDoubleEntry(entries: CreateLedgerEntryDto[]): Promise<{
@@ -370,6 +452,162 @@ export class LedgerEntriesService {
             totalDebits: totalDebits.toString(),
             totalCredits: totalCredits.toString(),
             difference: difference.toString(),
+        };
+    }
+
+    /**
+     * Find a specific ledger entry
+     */
+    async findOne(entityId: string, entryId: string) {
+        const entry = await this.prisma.ledgerEntry.findFirst({
+            where: {
+                id: entryId,
+                entityId: entityId
+            },
+            include: {
+                bankLedger: {
+                    select: {
+                        id: true,
+                        accountName: true
+                    }
+                },
+                chartAccount: {
+                    select: {
+                        id: true,
+                        accountCode: true,
+                        accountName: true,
+                        accountType: true
+                    }
+                }
+            }
+        });
+
+        if (!entry) {
+            throw new Error(`Ledger entry not found`);
+        }
+
+        return entry;
+    }
+
+    /**
+     * Update a ledger entry
+     */
+    async update(entityId: string, entryId: string, updateData: any, userId: string) {
+        // First verify the entry exists and belongs to the entity
+        const existingEntry = await this.findOne(entityId, entryId);
+
+        if (!existingEntry) {
+            throw new Error(`Ledger entry not found`);
+        }
+
+        // Update the entry
+        const updatedEntry = await this.prisma.ledgerEntry.update({
+            where: {
+                id: entryId
+            },
+            data: {
+                ...updateData,
+                updatedAt: new Date()
+            },
+            include: {
+                bankLedger: {
+                    select: {
+                        id: true,
+                        accountName: true
+                    }
+                },
+                chartAccount: {
+                    select: {
+                        id: true,
+                        accountCode: true,
+                        accountName: true,
+                        accountType: true
+                    }
+                }
+            }
+        });
+
+        return updatedEntry;
+    }
+
+    /**
+     * Delete a single ledger entry
+     */
+    async delete(entityId: string, entryId: string, userId: string) {
+        console.log(`Attempting to delete ledger entry ${entryId} for entity ${entityId}`);
+
+        // Find entry with bankLedger relationship to verify entity ownership
+        const existingEntry = await this.prisma.ledgerEntry.findFirst({
+            where: {
+                id: entryId,
+            },
+            include: {
+                bankLedger: {
+                    select: {
+                        id: true,
+                        entityId: true
+                    }
+                }
+            }
+        });
+
+        console.log(`Found entry:`, existingEntry);
+
+        if (!existingEntry) {
+            throw new Error(`Ledger entry with ID ${entryId} not found`);
+        }
+
+        // Check if the entry belongs to the correct entity through bankLedger relationship
+        if (existingEntry.bankLedger.entityId !== entityId) {
+            throw new Error(`Ledger entry ${entryId} belongs to entity ${existingEntry.bankLedger.entityId}, not ${entityId}`);
+        }
+
+        // Delete the entry
+        await this.prisma.ledgerEntry.delete({
+            where: {
+                id: entryId
+            }
+        });
+
+        console.log(`Successfully deleted ledger entry ${entryId}`);
+
+        return {
+            success: true,
+            message: `Ledger entry deleted successfully`,
+            deletedId: entryId
+        };
+    }
+
+    /**
+     * Delete all ledger entries for an entity
+     */
+    async deleteAll(entityId: string, userId: string) {
+        // Count entries first
+        const count = await this.prisma.ledgerEntry.count({
+            where: {
+                entityId: entityId
+            }
+        });
+
+        if (count === 0) {
+            return {
+                success: true,
+                message: 'No ledger entries to delete',
+                deletedCount: 0
+            };
+        }
+
+        // Delete all entries for the entity
+        const result = await this.prisma.ledgerEntry.deleteMany({
+            where: {
+                entityId: entityId
+            }
+        });
+
+        return {
+            success: true,
+            message: `Deleted ${result.count} ledger entries`,
+            deletedCount: result.count
         };
     }
 }
