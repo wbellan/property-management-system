@@ -31,13 +31,13 @@ import { BankingModule } from './modules/banking/banking.module';
             envFilePath: ['.env.local', '.env'],
         }),
 
-        // Rate limiting
-        ThrottlerModule.forRootAsync({
-            useFactory: () => ([{
-                ttl: parseInt(process.env.THROTTLE_TTL) || 60000, // milliseconds
-                limit: parseInt(process.env.THROTTLE_LIMIT) || 10,
-            }]),
-        }),
+        // // Rate limiting
+        // ThrottlerModule.forRootAsync({
+        //     useFactory: () => ([{
+        //         ttl: parseInt(process.env.THROTTLE_TTL) || 60000, // milliseconds
+        //         limit: parseInt(process.env.THROTTLE_LIMIT) || 150,
+        //     }]),
+        // }),
 
         // Core modules
         PrismaModule,
@@ -60,11 +60,11 @@ import { BankingModule } from './modules/banking/banking.module';
         ProfileModule,
         BankingModule
     ],
-    providers: [
-        {
-            provide: APP_GUARD,
-            useClass: ThrottlerGuard,
-        },
-    ],
+    // providers: [
+    //     {
+    //         provide: APP_GUARD,
+    //         useClass: ThrottlerGuard,
+    //     },
+    // ],
 })
 export class AppModule { }

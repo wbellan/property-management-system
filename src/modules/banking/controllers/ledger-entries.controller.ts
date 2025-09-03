@@ -9,6 +9,8 @@ import {
     Request,
     Delete,
     Patch,
+    HttpCode,
+    HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { LedgerEntriesService } from '../services/ledger-entries.service';
@@ -30,8 +32,9 @@ import { RolesGuard } from 'src/auth/guards/roles.guard';
 export class LedgerEntriesController {
     constructor(private readonly ledgerEntriesService: LedgerEntriesService) { }
 
+    // Should be ablel to remove this.
     @Post()
-    @ApiOperation({ summary: 'Create a single ledger entry' })
+    @ApiOperation({ summary: 'Create a single ledger entry (use /multiple instead)' })
     @ApiResponse({
         status: 201,
         description: 'Ledger entry created successfully',
@@ -46,11 +49,31 @@ export class LedgerEntriesController {
         @Body() createLedgerEntryDto: CreateLedgerEntryDto,
         @Request() req: any,
     ) {
-        return this.ledgerEntriesService.createEntry(
+        console.log('⚠️ Controller: Single entry creation (deprecated) for entityId:', entityId);
+
+        // Convert single entry to multiple entry format for consistency
+        const multipleDto: CreateMultipleLedgerEntriesDto = {
+            entries: [{
+                bankLedgerId: createLedgerEntryDto.bankLedgerId,
+                chartAccountId: createLedgerEntryDto.chartAccountId,
+                entryType: createLedgerEntryDto.entryType,
+                description: createLedgerEntryDto.description,
+                debitAmount: createLedgerEntryDto.debitAmount.toString(),
+                creditAmount: createLedgerEntryDto.creditAmount.toString(),
+                transactionDate: createLedgerEntryDto.transactionDate,
+                referenceId: createLedgerEntryDto.referenceId,
+                referenceNumber: createLedgerEntryDto.referenceNumber,
+            }],
+            transactionDescription: createLedgerEntryDto.description
+        };
+
+        const result = await this.ledgerEntriesService.createMultipleEntries(
             entityId,
-            createLedgerEntryDto,
+            multipleDto,
             req.user?.userId || 'system'
         );
+
+        return result[0]; // Return just the first entry for backward compatibility
     }
 
     @Post('multiple')
@@ -63,14 +86,18 @@ export class LedgerEntriesController {
         status: 400,
         description: 'Double-entry validation failed - debits must equal credits',
     })
+    @ApiResponse({
+        status: 404,
+        description: 'Bank ledger or chart account not found for entity',
+    })
     @Roles('ENTITY_MANAGER', 'ORG_ADMIN', 'SUPER_ADMIN', 'ACCOUNTANT')
     async createMultiple(
         @Param('entityId') entityId: string,
         @Body() createMultipleDto: CreateMultipleLedgerEntriesDto,
         @Request() req: any,
     ) {
-        console.log('User trying to create ledger entries - req.user?.id', req.user?.id);
-        console.log('User trying to create ledger entries req.user.userId ', req.user?.userId);
+        console.log('🏦 Controller: Creating multiple entries for entityId:', entityId);
+        console.log('👤 User:', req.user?.userId);
         return this.ledgerEntriesService.createMultipleEntries(
             entityId,
             createMultipleDto,
@@ -88,12 +115,17 @@ export class LedgerEntriesController {
         status: 400,
         description: 'Invalid transaction type or validation failed',
     })
+    @ApiResponse({
+        status: 404,
+        description: 'Bank account or chart account not found for entity',
+    })
     @Roles('ENTITY_MANAGER', 'ORG_ADMIN', 'SUPER_ADMIN')
     async createSimple(
         @Param('entityId') entityId: string,
         @Body() createSimpleDto: CreateSimpleEntryDto,
         @Request() req: any,
     ) {
+        console.log('📝 Controller: Creating simple entry for entityId:', entityId);
         return this.ledgerEntriesService.createSimpleEntry(
             entityId,
             createSimpleDto,
@@ -111,12 +143,17 @@ export class LedgerEntriesController {
         status: 400,
         description: 'Payment validation failed',
     })
+    @ApiResponse({
+        status: 404,
+        description: 'Bank account or income account not found for entity',
+    })
     @Roles('ENTITY_MANAGER', 'ORG_ADMIN', 'SUPER_ADMIN')
     async recordPayment(
         @Param('entityId') entityId: string,
         @Body() recordPaymentDto: RecordPaymentDto,
         @Request() req: any,
     ) {
+        console.log('💳 Controller: Recording payment for entityId:', entityId);
         return this.ledgerEntriesService.recordPayment(
             entityId,
             recordPaymentDto,
@@ -134,12 +171,17 @@ export class LedgerEntriesController {
         status: 400,
         description: 'Check deposit validation failed',
     })
+    @ApiResponse({
+        status: 404,
+        description: 'Bank account or income accounts not found for entity',
+    })
     @Roles('ENTITY_MANAGER', 'ORG_ADMIN', 'SUPER_ADMIN')
     async recordCheckDeposit(
         @Param('entityId') entityId: string,
         @Body() recordCheckDepositDto: RecordCheckDepositDto,
         @Request() req: any,
     ) {
+        console.log('🏦 Controller: Recording check deposit for entityId:', entityId);
         return this.ledgerEntriesService.recordCheckDeposit(
             entityId,
             recordCheckDepositDto,
@@ -165,12 +207,13 @@ export class LedgerEntriesController {
         @Query('limit') limit?: string,
         @Query('offset') offset?: string,
     ) {
+        console.log('📊 Controller: Getting ledger entries for entityId:', entityId);
         return this.ledgerEntriesService.getLedgerEntries(
             entityId,
             bankLedgerId,
             chartAccountId,
-            parseInt(limit) || 50,
-            parseInt(offset) || 0
+            limit ? parseInt(limit, 10) : 50,
+            offset ? parseInt(offset, 10) : 0,
         );
     }
 
@@ -235,47 +278,45 @@ export class LedgerEntriesController {
         );
     }
 
-    @Delete(':id')
-    @ApiOperation({ summary: 'Delete a ledger entry' })
+    // FIX: Add the missing DELETE endpoint for individual entries
+    @Delete(':entryId')
+    @HttpCode(HttpStatus.NO_CONTENT)
+    @ApiOperation({ summary: 'Delete a specific ledger entry' })
     @ApiResponse({
-        status: 200,
+        status: 204,
         description: 'Ledger entry deleted successfully',
     })
     @ApiResponse({
         status: 404,
-        description: 'Ledger entry not found',
+        description: 'Ledger entry not found for entity',
     })
     @Roles('ENTITY_MANAGER', 'ORG_ADMIN', 'SUPER_ADMIN')
-    async delete(
+    async deleteEntry(
         @Param('entityId') entityId: string,
-        @Param('id') id: string,
-        @Request() req: any,
+        @Param('entryId') entryId: string,
     ) {
-        return this.ledgerEntriesService.delete(
-            entityId,
-            id,
-            req.user?.userId || 'system'
-        );
+        console.log(`🗑️ Controller: Deleting entry ${entryId} for entity ${entityId}`);
+        await this.ledgerEntriesService.deleteEntry(entityId, entryId);
+        return; // 204 No Content
     }
 
+    // FIX: Add bulk delete endpoint for testing
     @Delete()
-    @ApiOperation({ summary: 'Delete all ledger entries for an entity' })
+    @HttpCode(HttpStatus.NO_CONTENT)
+    @ApiOperation({
+        summary: 'Delete all ledger entries for an entity',
+        description: '⚠️ WARNING: This will delete ALL ledger entries for the entity. Use for testing only.'
+    })
     @ApiResponse({
-        status: 200,
+        status: 204,
         description: 'All ledger entries deleted successfully',
     })
-    @ApiResponse({
-        status: 400,
-        description: 'Cannot delete entries with unresolved references',
-    })
     @Roles('ENTITY_MANAGER', 'ORG_ADMIN', 'SUPER_ADMIN')
-    async deleteAll(
+    async deleteAllEntries(
         @Param('entityId') entityId: string,
-        @Request() req: any,
     ) {
-        return this.ledgerEntriesService.deleteAll(
-            entityId,
-            req.user?.userId || 'system'
-        );
+        console.log(`🗑️ Controller: BULK DELETE all entries for entity ${entityId}`);
+        await this.ledgerEntriesService.deleteAllEntries(entityId);
+        return; // 204 No Content
     }
 }

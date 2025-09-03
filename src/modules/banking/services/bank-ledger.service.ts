@@ -32,6 +32,9 @@ export class BankLedgerService {
             }
         }
 
+        // NEW: Find or create corresponding chart account
+        let chartAccount = await this.findOrCreateBankChartAccount(entityId, dto);
+
         return this.prisma.bankLedger.create({
             data: {
                 entityId,
@@ -43,12 +46,21 @@ export class BankLedgerService {
                 notes: dto.notes,
                 currentBalance: new Decimal(0),
                 isActive: true,
+                chartAccountId: chartAccount.id, // NEW: Link to chart account
             },
             include: {
                 entity: {
                     select: {
                         id: true,
                         name: true,
+                    },
+                },
+                chartAccount: { // NEW: Include chart account info
+                    select: {
+                        id: true,
+                        accountCode: true,
+                        accountName: true,
+                        accountType: true,
                     },
                 },
             },
@@ -242,5 +254,52 @@ export class BankLedgerService {
 
         // We'll implement this once ledger entries are working
         return bankLedger.currentBalance;
+    }
+
+    // NEW METHOD: Find or create appropriate chart account for bank account
+    private async findOrCreateBankChartAccount(entityId: string, dto: CreateBankLedgerDto) {
+        // First, try to find an existing appropriate chart account
+        let chartAccount = await this.prisma.chartAccount.findFirst({
+            where: {
+                entityId,
+                accountType: 'ASSET',
+                OR: [
+                    { accountName: { contains: 'Operating', mode: 'insensitive' } },
+                    { accountName: { contains: 'Cash', mode: 'insensitive' } },
+                    { accountCode: '1100' }, // Primary checking account
+                ],
+            },
+            orderBy: { accountCode: 'asc' },
+        });
+
+        // If no suitable chart account found, create one
+        if (!chartAccount) {
+            // Generate next available account code in 11xx range
+            const existingAccounts = await this.prisma.chartAccount.findMany({
+                where: {
+                    entityId,
+                    accountCode: { startsWith: '11' },
+                },
+                orderBy: { accountCode: 'desc' },
+                take: 1,
+            });
+
+            const nextCode = existingAccounts.length > 0
+                ? (parseInt(existingAccounts[0].accountCode) + 10).toString()
+                : '1100';
+
+            chartAccount = await this.prisma.chartAccount.create({
+                data: {
+                    entityId,
+                    accountCode: nextCode,
+                    accountName: `Cash - ${dto.accountName}`,
+                    accountType: 'ASSET',
+                    description: `Asset account for bank account: ${dto.accountName} at ${dto.bankName}`,
+                    isActive: true,
+                },
+            });
+        }
+
+        return chartAccount;
     }
 }

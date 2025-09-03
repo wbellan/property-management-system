@@ -14,6 +14,8 @@ import { FinancialReportsController } from './controllers/financial-reports.cont
 import { AuditController } from './controllers/audit.controller';
 import { FinancialReportsService } from './services/financial-reports.service';
 import { AuditService } from './services/audit.service';
+import { PaymentIntegrationController } from './controllers/payment-integration.controller';
+import { PaymentIntegrationService } from './services/payment-integration.service';
 
 @Module({
     imports: [PrismaModule],
@@ -23,7 +25,8 @@ import { AuditService } from './services/audit.service';
         LedgerEntriesController,
         ReconciliationController,
         FinancialReportsController,
-        AuditController
+        AuditController,
+        PaymentIntegrationController
     ],
     providers: [
         BankLedgerService,
@@ -33,7 +36,8 @@ import { AuditService } from './services/audit.service';
         DefaultChartSetupService,
         ReconciliationService,
         FinancialReportsService,
-        AuditService
+        AuditService,
+        PaymentIntegrationService
     ],
     exports: [
         BankLedgerService,
@@ -42,7 +46,8 @@ import { AuditService } from './services/audit.service';
         BalanceCalculatorService,
         ReconciliationService,
         FinancialReportsService,
-        AuditService
+        AuditService,
+        PaymentIntegrationService
     ],
 })
 

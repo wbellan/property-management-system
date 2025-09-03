@@ -172,6 +172,7 @@ model User {
   properties             Property[]              @relation("UserProperties")
   importedStatements  BankStatement[]
   reconciliations     BankReconciliation[]
+  receipts PaymentReceipt[] @relation("ReceiptGenerator")
 
   @@map("users")
 }
@@ -300,7 +301,8 @@ model ChartAccount {
   children         ChartAccount[]    @relation("ChartAccountParent")
   invoiceLineItems InvoiceLineItem[]
   ledgerEntries    LedgerEntry[]
-
+  bankLedgers   BankLedger[]   @relation("BankLedgerChartAccount")
+  
   @@unique([entityId, accountCode])
   @@map("chart_of_accounts")
 }
@@ -323,6 +325,8 @@ model BankLedger {
   Payment        Payment[]
   statements      BankStatement[]
   reconciliations BankReconciliation[]
+  chartAccountId String
+  chartAccount   ChartAccount @relation("BankLedgerChartAccount", fields: [chartAccountId], references: [id], onDelete: Cascade)
 
   @@map("bank_ledgers")
 }
@@ -460,6 +464,7 @@ model Payment {
   bankLedger          BankLedger?             @relation(fields: [bankLedgerId], references: [id])
   entity              Entity                  @relation(fields: [entityId], references: [id], onDelete: Cascade)
   payer               User?                   @relation("PaymentPayer", fields: [payerId], references: [id])
+  receipts PaymentReceipt[]
 
   @@map("payments")
 }
@@ -818,6 +823,23 @@ model ReconciliationMatch {
 
   @@unique([ledgerEntryId, bankTransactionId])
   @@map("reconciliation_matches")
+}
+
+model PaymentReceipt {
+  id            String   @id @default(cuid())
+  paymentId     String
+  receiptNumber String   @unique
+  receiptData   String   // JSON string containing receipt details
+  format        String   @default("PDF") // PDF, HTML, etc.
+  generatedBy   String
+  emailSentTo   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  payment       Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  generator     User     @relation("ReceiptGenerator", fields: [generatedBy], references: [id])
+
+  @@map("payment_receipts")
 }
 
 enum UserRole {

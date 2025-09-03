@@ -32,6 +32,11 @@ export class CreateBankLedgerDto {
     @IsString()
     @IsOptional()
     notes?: string;
+
+    // NEW: Optional chart account ID (if not specified, will be auto-created)
+    @IsString()
+    @IsOptional()
+    chartAccountId?: string;
 }
 
 export class UpdateBankLedgerDto {
