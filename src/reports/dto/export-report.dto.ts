@@ -12,7 +12,11 @@ export class ExportReportDto {
     @IsString()
     entityId: string;
 
-    @ApiProperty({ enum: ReportFormat, example: ReportFormat.XLSX })
+    @ApiProperty({
+        enum: ReportFormat,
+        example: ReportFormat.CSV,
+        description: 'Export format - CSV for spreadsheets, HTML for Excel-compatible tables'
+    })
     @IsEnum(ReportFormat)
     format: ReportFormat;
 

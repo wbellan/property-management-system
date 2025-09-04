@@ -334,9 +334,14 @@ export class ReportsController {
   @Get('export/:reportType/:entityId')
   @UseGuards(RolesGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.ORG_ADMIN, UserRole.ENTITY_MANAGER, UserRole.ACCOUNTANT)
-  @ApiOperation({ summary: 'Export report data in various formats' })
+  @ApiOperation({ summary: 'Export report data in secure formats' })
   @ApiResponse({ status: 200, description: 'Report data exported successfully' })
-  @ApiQuery({ name: 'format', enum: ['json', 'csv', 'xlsx'], example: 'json', description: 'Export format' })
+  @ApiQuery({
+    name: 'format',
+    enum: ['json', 'csv', 'html', 'pdf'],
+    example: 'csv',
+    description: 'Export format - CSV for spreadsheets, HTML for Excel-compatible format'
+  })
   @ApiQuery({ name: 'startDate', required: false, description: 'Start date for time-based reports' })
   @ApiQuery({ name: 'endDate', required: false, description: 'End date for time-based reports' })
   async exportReport(
@@ -345,10 +350,16 @@ export class ReportsController {
     @CurrentUser('role') userRole: UserRole,
     @CurrentUser('organizationId') userOrgId: string,
     @CurrentUser('entities') userEntities: any[],
-    @Query('format') format: 'json' | 'csv' | 'xlsx' = 'json',
+    @Query('format') format: 'json' | 'csv' | 'html' | 'pdf' = 'csv', // Changed default to CSV
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
+    // Validate format to ensure no xlsx is used
+    const allowedFormats = ['json', 'csv', 'html', 'pdf'];
+    if (!allowedFormats.includes(format)) {
+      throw new BadRequestException(`Unsupported format: ${format}. Allowed formats: ${allowedFormats.join(', ')}`);
+    }
+
     const entityIds = userEntities.map(e => e.id);
     return this.reportsService.exportReport(
       reportType,

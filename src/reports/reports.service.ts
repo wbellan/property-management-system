@@ -741,7 +741,7 @@ export class ReportsService {
     async exportReport(
         reportType: string,
         entityId: string,
-        format: 'json' | 'csv' | 'xlsx',
+        format:'json' | 'csv' | 'html' | 'pdf' = 'csv',
         userRole: UserRole,
         userOrgId: string,
         userEntities: string[],
