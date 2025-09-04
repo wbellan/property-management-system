@@ -10,7 +10,7 @@ import {
     UseGuards,
     Request,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { BankLedgerService } from '../services/bank-ledger.service';
 import { CreateBankLedgerDto, UpdateBankLedgerDto } from '../dto/create-bank-ledger.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
@@ -180,4 +180,161 @@ export class BankLedgerController {
             timestamp: new Date().toISOString(),
         };
     }
+
+    // =====================================
+    // NEW BANK TRANSACTION METHODS ADDED
+    // =====================================
+
+    @Get(':accountId/transactions')
+    @ApiOperation({ summary: 'Get bank transactions for a specific account' })
+    @ApiQuery({ name: 'startDate', required: false, description: 'Filter from date (ISO string)' })
+    @ApiQuery({ name: 'endDate', required: false, description: 'Filter to date (ISO string)' })
+    @ApiQuery({ name: 'limit', required: false, description: 'Number of transactions (default: 100)' })
+    @ApiQuery({ name: 'offset', required: false, description: 'Number to skip (default: 0)' })
+    @ApiResponse({
+        status: 200,
+        description: 'Bank transactions retrieved successfully',
+    })
+    @ApiResponse({
+        status: 404,
+        description: 'Bank account not found',
+    })
+    @Roles('ENTITY_MANAGER', 'ORG_ADMIN', 'SUPER_ADMIN', 'ACCOUNTANT')
+    async getBankTransactions(
+        @Param('entityId') entityId: string,
+        @Param('accountId') accountId: string,
+        @Query('startDate') startDate?: string,
+        @Query('endDate') endDate?: string,
+        @Query('limit') limit?: string,
+        @Query('offset') offset?: string,
+    ) {
+        const limitNum = parseInt(limit || '100');
+        const offsetNum = parseInt(offset || '0');
+        const parsedStartDate = startDate ? new Date(startDate) : undefined;
+        const parsedEndDate = endDate ? new Date(endDate) : undefined;
+
+        return this.bankLedgerService.getBankTransactions(
+            entityId,
+            accountId,
+            {
+                startDate: parsedStartDate,
+                endDate: parsedEndDate,
+                limit: limitNum,
+                offset: offsetNum,
+            }
+        );
+    }
+
+    // @Post(':accountId/transactions')
+    // @ApiOperation({ summary: 'Create a new bank transaction' })
+    // @ApiResponse({
+    //     status: 201,
+    //     description: 'Bank transaction created successfully',
+    // })
+    // @ApiResponse({
+    //     status: 400,
+    //     description: 'Bad request - validation failed',
+    // })
+    // @ApiResponse({
+    //     status: 404,
+    //     description: 'Bank account not found',
+    // })
+    // @Roles('ENTITY_MANAGER', 'ORG_ADMIN', 'SUPER_ADMIN')
+    // async createBankTransaction(
+    //     @Param('entityId') entityId: string,
+    //     @Param('accountId') accountId: string,
+    //     @Body() transactionData: {
+    //         amount: number;
+    //         description: string;
+    //         transactionDate: string;
+    //         transactionType: string;
+    //         referenceNumber?: string;
+    //     },
+    //     @Request() req: any,
+    // ) {
+    //     return this.bankLedgerService.createBankTransaction(
+    //         entityId,
+    //         accountId,
+    //         transactionData,
+    //         req.user?.id || 'system'
+    //     );
+    // }
+
+    // @Get(':accountId/transactions/:transactionId')
+    // @ApiOperation({ summary: 'Get specific bank transaction details' })
+    // @ApiResponse({
+    //     status: 200,
+    //     description: 'Transaction details retrieved successfully',
+    // })
+    // @ApiResponse({
+    //     status: 404,
+    //     description: 'Transaction not found',
+    // })
+    // @Roles('ENTITY_MANAGER', 'ORG_ADMIN', 'SUPER_ADMIN', 'ACCOUNTANT')
+    // async getBankTransaction(
+    //     @Param('entityId') entityId: string,
+    //     @Param('accountId') accountId: string,
+    //     @Param('transactionId') transactionId: string,
+    // ) {
+    //     return this.bankLedgerService.getBankTransaction(
+    //         entityId,
+    //         accountId,
+    //         transactionId
+    //     );
+    // }
+
+    // @Patch(':accountId/transactions/:transactionId')
+    // @ApiOperation({ summary: 'Update a bank transaction' })
+    // @ApiResponse({
+    //     status: 200,
+    //     description: 'Transaction updated successfully',
+    // })
+    // @ApiResponse({
+    //     status: 404,
+    //     description: 'Transaction not found',
+    // })
+    // @Roles('ENTITY_MANAGER', 'ORG_ADMIN', 'SUPER_ADMIN')
+    // async updateBankTransaction(
+    //     @Param('entityId') entityId: string,
+    //     @Param('accountId') accountId: string,
+    //     @Param('transactionId') transactionId: string,
+    //     @Body() updateData: {
+    //         description?: string;
+    //         referenceNumber?: string;
+    //     },
+    //     @Request() req: any,
+    // ) {
+    //     return this.bankLedgerService.updateBankTransaction(
+    //         entityId,
+    //         accountId,
+    //         transactionId,
+    //         updateData,
+    //         req.user?.id || 'system'
+    //     );
+    // }
+
+    // @Delete(':accountId/transactions/:transactionId')
+    // @ApiOperation({ summary: 'Delete a bank transaction' })
+    // @ApiResponse({
+    //     status: 200,
+    //     description: 'Transaction deleted successfully',
+    // })
+    // @ApiResponse({
+    //     status: 404,
+    //     description: 'Transaction not found',
+    // })
+    // @Roles('ENTITY_MANAGER', 'ORG_ADMIN', 'SUPER_ADMIN')
+    // async deleteBankTransaction(
+    //     @Param('entityId') entityId: string,
+    //     @Param('accountId') accountId: string,
+    //     @Param('transactionId') transactionId: string,
+    //     @Request() req: any,
+    // ) {
+    //     return this.bankLedgerService.deleteBankTransaction(
+    //         entityId,
+    //         accountId,
+    //         transactionId,
+    //         req.user?.id || 'system'
+    //     );
+    // }
 }

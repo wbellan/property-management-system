@@ -302,4 +302,111 @@ export class BankLedgerService {
 
         return chartAccount;
     }
+
+    async getBankTransactions(
+        entityId: string,
+        accountId: string,
+        options: {
+            startDate?: Date;
+            endDate?: Date;
+            limit?: number;
+            offset?: number;
+        }
+    ) {
+        // Verify the bank account exists and belongs to the entity
+        const bankAccount = await this.prisma.bankLedger.findFirst({
+            where: {
+                id: accountId,
+                entityId: entityId,
+            },
+        });
+
+        if (!bankAccount) {
+            throw new NotFoundException('Bank account not found');
+        }
+
+        // Build date filter conditions
+        const dateFilter: any = {};
+        if (options.startDate) {
+            dateFilter.gte = options.startDate;
+        }
+        if (options.endDate) {
+            dateFilter.lte = options.endDate;
+        }
+
+        // Get bank transactions through bank statements
+        const bankTransactions = await this.prisma.bankTransaction.findMany({
+            where: {
+                bankStatement: {
+                    bankAccountId: accountId,
+                },
+                ...(Object.keys(dateFilter).length > 0 && {
+                    transactionDate: dateFilter,
+                }),
+            },
+            include: {
+                bankStatement: {
+                    select: {
+                        bankAccountId: true,
+                        statementReference: true,
+                    },
+                },
+            },
+            orderBy: {
+                transactionDate: 'desc',
+            },
+            take: options.limit || 100,
+            skip: options.offset || 0,
+        });
+
+        // Get total count for pagination
+        const totalCount = await this.prisma.bankTransaction.count({
+            where: {
+                bankStatement: {
+                    bankAccountId: accountId,
+                },
+                ...(Object.keys(dateFilter).length > 0 && {
+                    transactionDate: dateFilter,
+                }),
+            },
+        });
+
+        // Format response data to match what your frontend expects
+        const formattedTransactions = bankTransactions.map(transaction => ({
+            id: transaction.id,
+            date: transaction.transactionDate.toISOString(),
+            amount: parseFloat(transaction.amount.toString()),
+            description: transaction.description,
+            referenceNumber: transaction.referenceNumber,
+            transactionType: transaction.transactionType,
+            runningBalance: transaction.runningBalance ? parseFloat(transaction.runningBalance.toString()) : null,
+            bankAccountId: accountId,
+            statementReference: transaction.bankStatement.statementReference,
+            createdAt: transaction.createdAt.toISOString(),
+        }));
+
+        const limit = options.limit || 100;
+        const offset = options.offset || 0;
+
+        return {
+            data: formattedTransactions,
+            pagination: {
+                total: totalCount,
+                limit,
+                offset,
+                hasMore: offset + limit < totalCount,
+            },
+            meta: {
+                bankAccountId: accountId,
+                entityId,
+                dateRange: {
+                    start: options.startDate?.toISOString() || null,
+                    end: options.endDate?.toISOString() || null,
+                },
+            },
+            // Add these for compatibility with your controller
+            page: Math.floor(offset / limit) + 1,
+            totalPages: Math.ceil(totalCount / limit),
+        };
+    }
 }

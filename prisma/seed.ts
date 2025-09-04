@@ -1,4 +1,4 @@
-// prisma/seed.ts - Enhanced with Chart Account Mapping for Banking Integration
+// prisma/seed.ts - Comprehensive Dataset with Bank Transactions
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
@@ -253,6 +253,8 @@ async function main() {
   // Create user-entity relationships
   await prisma.userEntity.createMany({
     data: [
+      { userId: superAdmin.id, entityId: entity1.id },
+      { userId: superAdmin.id, entityId: entity2.id },
       { userId: entityManager.id, entityId: entity1.id },
       { userId: entityManager.id, entityId: entity2.id },
       { userId: propertyManager.id, entityId: entity1.id },
@@ -340,9 +342,8 @@ async function main() {
       accountType: 'CHECKING',
       accountNumber: '****1234',
       routingNumber: '111000025',
-      currentBalance: 45000,
-      notes: 'Main operating account for Lakeway Investments',
-      chartAccountId: operatingAccount1!.id, // Link to Operating chart account
+      currentBalance: 46904.33,
+      chartAccountId: operatingAccount1!.id,
     },
   });
 
@@ -355,8 +356,7 @@ async function main() {
       accountNumber: '****5678',
       routingNumber: '111000025',
       currentBalance: 18000,
-      notes: 'Dedicated account for tenant security deposits',
-      chartAccountId: securityAccount1!.id, // Link to Security Deposits chart account
+      chartAccountId: securityAccount1!.id,
     },
   });
 
@@ -369,11 +369,93 @@ async function main() {
       accountNumber: '****9876',
       routingNumber: '114000093',
       currentBalance: 85000,
-      notes: 'Main business account for Downtown Holdings',
-      chartAccountId: operatingAccount2!.id, // Link to Operating chart account
+      chartAccountId: operatingAccount2!.id,
     },
   });
   console.log('✅ Created bank accounts with chart account mapping');
+
+  // Create bank statements
+  const bankStatement1 = await prisma.bankStatement.create({
+    data: {
+      bankAccountId: bankAccount1Operating.id,
+      statementStartDate: new Date('2024-08-31'),
+      statementEndDate: new Date('2024-09-30'),
+      openingBalance: 45000.00,
+      closingBalance: 46904.33,
+      statementReference: 'STMT-2024-09',
+      importedById: entityManager.id,
+      importedAt: new Date(),
+    },
+  });
+  console.log('✅ Created bank statements');
+
+  // Create bank transactions for check register
+  const bankTransactionData = [
+    {
+      transactionDate: new Date('2024-08-31T10:00:00Z'),
+      amount: 1400.00,
+      description: 'Monthly Rent - Unit A01',
+      referenceNumber: 'DEP001',
+      transactionType: 'DEBIT',
+      runningBalance: 46400.00
+    },
+    {
+      transactionDate: new Date('2024-08-31T10:30:00Z'),
+      amount: 1800.00,
+      description: 'Monthly Rent - Unit A02',
+      referenceNumber: 'DEP002',
+      transactionType: 'DEBIT',
+      runningBalance: 48200.00
+    },
+    {
+      transactionDate: new Date('2024-09-01T14:15:00Z'),
+      amount: 245.67,
+      description: 'Austin Electric Company',
+      referenceNumber: '1234',
+      transactionType: 'CREDIT',
+      runningBalance: 47954.33
+    },
+    {
+      transactionDate: new Date('2024-09-02T09:30:00Z'),
+      amount: 350.00,
+      description: 'Hill Country Plumbing',
+      referenceNumber: 'ACH001',
+      transactionType: 'CREDIT',
+      runningBalance: 47604.33
+    },
+    {
+      transactionDate: new Date('2024-09-04T16:45:00Z'),
+      amount: 50.00,
+      description: 'Late Fee - Unit A05',
+      referenceNumber: 'DEP003',
+      transactionType: 'DEBIT',
+      runningBalance: 47654.33
+    },
+    {
+      transactionDate: new Date('2024-09-09T11:20:00Z'),
+      amount: 750.00,
+      description: 'Property Insurance Co',
+      referenceNumber: '1235',
+      transactionType: 'CREDIT',
+      runningBalance: 46904.33
+    }
+  ];
+
+  // Create the bank transactions
+  for (const txn of bankTransactionData) {
+    await prisma.bankTransaction.create({
+      data: {
+        bankStatementId: bankStatement1.id,
+        transactionDate: txn.transactionDate,
+        amount: txn.amount,
+        description: txn.description,
+        referenceNumber: txn.referenceNumber,
+        transactionType: txn.transactionType,
+        runningBalance: txn.runningBalance,
+      },
+    });
+  }
+  console.log('✅ Created bank transactions');
 
   // Create properties
   const property1 = await prisma.property.create({
@@ -570,7 +652,6 @@ async function main() {
     const space = occupiedSpaces[i];
     const tenant = tenants[i % tenants.length];
 
-    // Create lease start dates over the past 18 months
     const daysAgo = Math.floor(Math.random() * 540);
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - daysAgo);
@@ -597,7 +678,6 @@ async function main() {
       },
     });
 
-    // Update space status to OCCUPIED
     await prisma.space.update({
       where: { id: space.id },
       data: { status: 'OCCUPIED' },
@@ -606,147 +686,61 @@ async function main() {
     leases.push(lease);
   }
 
-  console.log(`✅ Created ${leases.length} active leases (${Math.round((leases.length / totalSpaceCount) * 100)}% occupancy)`);
+  console.log(`✅ Created ${leases.length} active leases`);
 
-  // Create sample ledger entries using correct chart account mapping
-  const rentalIncomeAccount1 = chartAccounts1.find(a => a.accountCode === '4100');
-  const rentalIncomeAccount2 = chartAccounts2.find(a => a.accountCode === '4100');
-  const maintenanceAccount1 = chartAccounts1.find(a => a.accountCode === '5100');
-  const lateFeeAccount1 = chartAccounts1.find(a => a.accountCode === '4200');
+  // Create corresponding ledger entries for bank transactions
+  const accountMappings = [
+    { description: 'Monthly Rent - Unit A01', chartAccount: chartAccounts1.find(a => a.accountCode === '4100') },
+    { description: 'Monthly Rent - Unit A02', chartAccount: chartAccounts1.find(a => a.accountCode === '4100') },
+    { description: 'Austin Electric Company', chartAccount: chartAccounts1.find(a => a.accountCode === '5200') },
+    { description: 'Hill Country Plumbing', chartAccount: chartAccounts1.find(a => a.accountCode === '5100') },
+    { description: 'Late Fee - Unit A05', chartAccount: chartAccounts1.find(a => a.accountCode === '4200') },
+    { description: 'Property Insurance Co', chartAccount: chartAccounts1.find(a => a.accountCode === '5300') },
+  ];
 
-  // Rent payments for Entity 1
-  await prisma.ledgerEntry.create({
-    data: {
-      bankLedgerId: bankAccount1Operating.id,
-      chartAccountId: operatingAccount1!.id,
-      transactionType: 'DEBIT',
-      amount: 1400,
-      description: 'Rent payment deposit - Unit A01',
-      transactionDate: new Date('2025-08-01'),
-      entryType: 'PAYMENT',
-      debitAmount: 1400,
-      creditAmount: 0,
-      referenceNumber: 'CHECK-001',
-      createdById: entityManager.id,
-    },
-  });
+  for (let i = 0; i < bankTransactionData.length; i++) {
+    const txn = bankTransactionData[i];
+    const mapping = accountMappings[i];
+    const isDeposit = txn.transactionType === 'DEBIT';
 
-  await prisma.ledgerEntry.create({
-    data: {
-      bankLedgerId: bankAccount1Operating.id,
-      chartAccountId: rentalIncomeAccount1!.id,
-      transactionType: 'CREDIT',
-      amount: 1400,
-      description: 'Rent payment - Unit A01',
-      transactionDate: new Date('2025-08-01'),
-      entryType: 'PAYMENT',
-      debitAmount: 0,
-      creditAmount: 1400,
-      referenceNumber: 'CHECK-001',
-      createdById: entityManager.id,
-    },
-  });
+    // Bank account ledger entry
+    await prisma.ledgerEntry.create({
+      data: {
+        bankLedgerId: bankAccount1Operating.id,
+        chartAccountId: operatingAccount1!.id,
+        transactionType: isDeposit ? 'DEBIT' : 'CREDIT',
+        amount: txn.amount,
+        description: txn.description,
+        transactionDate: txn.transactionDate,
+        entryType: 'PAYMENT',
+        debitAmount: isDeposit ? txn.amount : 0,
+        creditAmount: isDeposit ? 0 : txn.amount,
+        referenceNumber: txn.referenceNumber,
+        createdById: entityManager.id,
+      },
+    });
 
-  // Late fee entry
-  await prisma.ledgerEntry.create({
-    data: {
-      bankLedgerId: bankAccount1Operating.id,
-      chartAccountId: operatingAccount1!.id,
-      transactionType: 'DEBIT',
-      amount: 50,
-      description: 'Late fee payment - Unit A03',
-      transactionDate: new Date('2025-08-10'),
-      entryType: 'PAYMENT',
-      debitAmount: 50,
-      creditAmount: 0,
-      referenceNumber: 'CHECK-002',
-      createdById: entityManager.id,
-    },
-  });
+    // Corresponding chart account entry
+    if (mapping.chartAccount) {
+      await prisma.ledgerEntry.create({
+        data: {
+          bankLedgerId: bankAccount1Operating.id,
+          chartAccountId: mapping.chartAccount.id,
+          transactionType: isDeposit ? 'CREDIT' : 'DEBIT',
+          amount: txn.amount,
+          description: txn.description,
+          transactionDate: txn.transactionDate,
+          entryType: 'PAYMENT',
+          debitAmount: isDeposit ? 0 : txn.amount,
+          creditAmount: isDeposit ? txn.amount : 0,
+          referenceNumber: txn.referenceNumber,
+          createdById: entityManager.id,
+        },
+      });
+    }
+  }
 
-  await prisma.ledgerEntry.create({
-    data: {
-      bankLedgerId: bankAccount1Operating.id,
-      chartAccountId: lateFeeAccount1!.id,
-      transactionType: 'CREDIT',
-      amount: 50,
-      description: 'Late fee income - Unit A03',
-      transactionDate: new Date('2025-08-10'),
-      entryType: 'PAYMENT',
-      debitAmount: 0,
-      creditAmount: 50,
-      referenceNumber: 'CHECK-002',
-      createdById: entityManager.id,
-    },
-  });
-
-  // Maintenance expense
-  await prisma.ledgerEntry.create({
-    data: {
-      bankLedgerId: bankAccount1Operating.id,
-      chartAccountId: maintenanceAccount1!.id,
-      transactionType: 'DEBIT',
-      amount: 350,
-      description: 'Plumbing repair expense - Unit A03',
-      transactionDate: new Date('2025-08-15'),
-      entryType: 'PAYMENT',
-      debitAmount: 350,
-      creditAmount: 0,
-      referenceNumber: 'CHECK-003',
-      createdById: entityManager.id,
-    },
-  });
-
-  await prisma.ledgerEntry.create({
-    data: {
-      bankLedgerId: bankAccount1Operating.id,
-      chartAccountId: operatingAccount1!.id,
-      transactionType: 'CREDIT',
-      amount: 350,
-      description: 'Payment for plumbing repair - Unit A03',
-      transactionDate: new Date('2025-08-15'),
-      entryType: 'PAYMENT',
-      debitAmount: 0,
-      creditAmount: 350,
-      referenceNumber: 'CHECK-003',
-      createdById: entityManager.id,
-    },
-  });
-
-  // Office rent for Entity 2
-  await prisma.ledgerEntry.create({
-    data: {
-      bankLedgerId: bankAccount2.id,
-      chartAccountId: operatingAccount2!.id,
-      transactionType: 'DEBIT',
-      amount: 2800,
-      description: 'Office rent deposit - Suite 001',
-      transactionDate: new Date('2025-08-01'),
-      entryType: 'PAYMENT',
-      debitAmount: 2800,
-      creditAmount: 0,
-      referenceNumber: 'ACH-001',
-      createdById: entityManager.id,
-    },
-  });
-
-  await prisma.ledgerEntry.create({
-    data: {
-      bankLedgerId: bankAccount2.id,
-      chartAccountId: rentalIncomeAccount2!.id,
-      transactionType: 'CREDIT',
-      amount: 2800,
-      description: 'Office rent income - Suite 001',
-      transactionDate: new Date('2025-08-01'),
-      entryType: 'PAYMENT',
-      debitAmount: 0,
-      creditAmount: 2800,
-      referenceNumber: 'ACH-001',
-      createdById: entityManager.id,
-    },
-  });
-
-  console.log('✅ Created sample ledger entries');
+  console.log('✅ Created ledger entries');
 
   // Create vendors
   const vendors = [];
@@ -798,12 +792,11 @@ async function main() {
         status: i < 4 ? 'COMPLETED' : 'IN_PROGRESS',
         estimatedCost: 200 + (i * 50),
         actualCost: i < 4 ? 200 + (i * 50) : undefined,
-        requestedAt: new Date(Date.now() - (i * 86400000)), // Spread over last few days
+        requestedAt: new Date(Date.now() - (i * 86400000)),
         completedAt: i < 4 ? new Date(Date.now() - ((i - 2) * 86400000)) : undefined,
       },
     });
 
-    // Create maintenance assignment
     await prisma.maintenanceAssignment.create({
       data: {
         maintenanceReqId: request.id,
@@ -813,7 +806,6 @@ async function main() {
         status: i < 4 ? 'COMPLETED' : 'ASSIGNED',
         completedAt: i < 4 ? new Date() : undefined,
         cost: i < 4 ? 200 + (i * 50) : undefined,
-        notes: i < 4 ? 'Work completed successfully' : 'Scheduled for completion',
       },
     });
 
@@ -822,13 +814,12 @@ async function main() {
 
   console.log(`✅ Created ${maintenanceRequests.length} maintenance requests`);
 
-  // Create sample invoices and payments
+  // Create sample payments
   const samplePayments = [];
 
   for (let i = 0; i < 5; i++) {
     const lease = leases[i % leases.length];
 
-    // Get the property for this lease to access entityId
     const property = await prisma.property.findUnique({
       where: { id: lease.propertyId }
     });
@@ -859,27 +850,6 @@ async function main() {
 
   console.log(`✅ Created ${samplePayments.length} sample payments`);
 
-  // Create property images
-  const propertyImages = [
-    { propertyId: property1.id, url: '/images/properties/lakeway-exterior.jpg', filename: 'lakeway-exterior.jpg', caption: 'Lakeway Vista - Building Exterior', isPrimary: true },
-    { propertyId: property1.id, url: '/images/properties/lakeway-pool.jpg', filename: 'lakeway-pool.jpg', caption: 'Lakeway Vista - Pool Area', isPrimary: false },
-    { propertyId: property2.id, url: '/images/properties/cedar-park-exterior.jpg', filename: 'cedar-park-exterior.jpg', caption: 'Cedar Park Commons - Main Building', isPrimary: true },
-    { propertyId: property2.id, url: '/images/properties/cedar-park-playground.jpg', filename: 'cedar-park-playground.jpg', caption: 'Cedar Park Commons - Playground', isPrimary: false },
-    { propertyId: property3.id, url: '/images/properties/tech-center-exterior.jpg', filename: 'tech-center-exterior.jpg', caption: 'Austin Tech Center - Downtown Location', isPrimary: true },
-  ];
-
-  for (const imageData of propertyImages) {
-    await prisma.propertyImage.create({
-      data: {
-        ...imageData,
-        mimeType: 'image/jpeg',
-        size: 1024000 + Math.floor(Math.random() * 2048000),
-      },
-    });
-  }
-
-  console.log('✅ Created property images');
-
   // Calculate summary statistics
   const totalSpaces = spaces.length;
   const totalLeases = leases.length;
@@ -898,10 +868,8 @@ async function main() {
   console.log(`   • Occupancy Rate: ${occupancyRate}%`);
   console.log(`   • Monthly Revenue: $${totalMonthlyRevenue.toLocaleString()}`);
   console.log(`   • Annual Revenue: $${totalAnnualRevenue.toLocaleString()}`);
-  console.log(`   • Chart Accounts: ${defaultAccounts.length} accounts per entity`);
-  console.log(`   • Bank Accounts: 3 (with chart account mapping)`);
-  console.log(`   • Ledger Entries: 8 sample transactions`);
-  console.log(`   • Vendors: ${vendors.length}`);
+  console.log(`   • Bank Transactions: ${bankTransactionData.length} transactions`);
+  console.log(`   • Ledger Entries: ${bankTransactionData.length * 2} entries`);
   console.log(`   • Maintenance Requests: ${maintenanceRequests.length}`);
   console.log(`   • Sample Payments: ${samplePayments.length}`);
 
@@ -912,22 +880,20 @@ async function main() {
   console.log(`   • Property Manager: ${propertyManager.email}`);
   console.log(`   • Accountant: ${accountant.email}`);
   console.log(`   • Maintenance: ${maintenanceStaff.email}`);
-  console.log(`   • Tenant 1: ${tenantUser1.email} (James Anderson)`);
-  console.log(`   • Tenant 2: ${tenantUser2.email} (Emily Wilson)`);
-  console.log(`   • Tenant 3: ${tenantUser3.email} (Robert Garcia)`);
 
-  console.log('\n🏦 Banking Integration:');
-  console.log('   • All bank accounts linked to proper chart accounts');
-  console.log('   • Operating accounts use "Checking Account - Operating" (1100)');
-  console.log('   • Security deposit accounts use "Security Deposits" chart account (1110)');
-  console.log('   • Sample ledger entries with proper double-entry bookkeeping');
+  console.log('\n🏦 Banking Data:');
+  console.log('   • 3 bank accounts with proper chart account mapping');
+  console.log('   • 1 bank statement with 6 transactions');
+  console.log('   • 6 bank transactions for check register testing');
+  console.log('   • 12 corresponding ledger entries (double-entry bookkeeping)');
+  console.log('   • Final balance: $46,904.33');
 
-  console.log('\n🚀 Ready for testing payment recording with correct chart account mapping!');
+  console.log('\n🚀 Complete dataset ready for all API testing!');
 }
 
 main()
   .catch((e) => {
-    console.error('❌ Error during seeding:', e);
+    console.error('⚠ Error during seeding:', e);
     process.exit(1);
   })
   .finally(async () => {
