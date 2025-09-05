@@ -9,6 +9,7 @@ import {
     Query,
     UseGuards,
     Request,
+    BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { BankLedgerService } from '../services/bank-ledger.service';
@@ -225,40 +226,47 @@ export class BankLedgerController {
         );
     }
 
-    // @Post(':accountId/transactions')
-    // @ApiOperation({ summary: 'Create a new bank transaction' })
-    // @ApiResponse({
-    //     status: 201,
-    //     description: 'Bank transaction created successfully',
-    // })
-    // @ApiResponse({
-    //     status: 400,
-    //     description: 'Bad request - validation failed',
-    // })
-    // @ApiResponse({
-    //     status: 404,
-    //     description: 'Bank account not found',
-    // })
-    // @Roles('ENTITY_MANAGER', 'ORG_ADMIN', 'SUPER_ADMIN')
-    // async createBankTransaction(
-    //     @Param('entityId') entityId: string,
-    //     @Param('accountId') accountId: string,
-    //     @Body() transactionData: {
-    //         amount: number;
-    //         description: string;
-    //         transactionDate: string;
-    //         transactionType: string;
-    //         referenceNumber?: string;
-    //     },
-    //     @Request() req: any,
-    // ) {
-    //     return this.bankLedgerService.createBankTransaction(
-    //         entityId,
-    //         accountId,
-    //         transactionData,
-    //         req.user?.id || 'system'
-    //     );
-    // }
+    @Post(':accountId/transactions')
+    @ApiOperation({ summary: 'Create a new bank transaction' })
+    @ApiResponse({
+        status: 201,
+        description: 'Bank transaction created successfully',
+    })
+    @ApiResponse({
+        status: 400,
+        description: 'Bad request - validation failed',
+    })
+    @ApiResponse({
+        status: 404,
+        description: 'Bank account not found',
+    })
+    @Roles('ENTITY_MANAGER', 'ORG_ADMIN', 'SUPER_ADMIN')
+    async createBankTransaction(
+        @Param('entityId') entityId: string,
+        @Param('accountId') accountId: string,
+        @Body() transactionData: {
+            amount: number;
+            description: string;
+            transactionDate: string;
+            transactionType: string;
+            referenceNumber?: string;
+        },
+        @Request() req: any,
+    ) {
+        // Extract user ID from JWT token properly
+        const userId = req.user?.userId || req.user?.id || req.user?.sub;
+
+        if (!userId) {
+            throw new BadRequestException('User authentication required');
+        }
+
+        return this.bankLedgerService.createBankTransaction(
+            entityId,
+            accountId,
+            transactionData,
+            userId
+        );
+    }
 
     // @Get(':accountId/transactions/:transactionId')
     // @ApiOperation({ summary: 'Get specific bank transaction details' })

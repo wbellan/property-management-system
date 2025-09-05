@@ -409,4 +409,299 @@ export class BankLedgerService {
             totalPages: Math.ceil(totalCount / limit),
         };
     }
+
+    async createBankTransaction(
+        entityId: string,
+        accountId: string,
+        transactionData: {
+            amount: number;
+            description: string;
+            transactionDate: string;
+            transactionType: string;
+            referenceNumber?: string;
+        },
+        userId: string
+    ) {
+        console.log('Service received userId:', userId); // Debug log
+
+        // Verify the bank account exists and belongs to the entity
+        const bankAccount = await this.prisma.bankLedger.findFirst({
+            where: {
+                id: accountId,
+                entityId: entityId,
+            },
+        });
+
+        if (!bankAccount) {
+            throw new NotFoundException('Bank account not found');
+        }
+
+        // Verify the user exists and get user details for audit
+        const user = await this.prisma.user.findUnique({
+            where: { id: userId },
+            select: { id: true, email: true, role: true }
+        });
+
+        if (!user) {
+            throw new NotFoundException(`User with ID ${userId} not found. Cannot create transaction without valid user.`);
+        }
+
+        console.log('Transaction being created by user:', user.email, 'Role:', user.role);
+
+        // For now, create a simple bank transaction record
+        // This is a simplified approach - in a full implementation, you'd want
+        // to integrate with your existing ledger entries system
+
+        return this.prisma.$transaction(async (prisma) => {
+            // Create a bank statement if none exists for today
+            const today = new Date();
+            const statementStartDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+            const statementEndDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+
+            let bankStatement = await prisma.bankStatement.findFirst({
+                where: {
+                    bankAccountId: accountId,
+                    statementStartDate: {
+                        gte: statementStartDate,
+                        lt: statementEndDate
+                    }
+                }
+            });
+
+            if (!bankStatement) {
+                bankStatement = await prisma.bankStatement.create({
+                    data: {
+                        bankAccountId: accountId,
+                        statementStartDate: statementStartDate,
+                        statementEndDate: statementEndDate,
+                        openingBalance: bankAccount.currentBalance,
+                        closingBalance: bankAccount.currentBalance,
+                        statementReference: `AUTO-${new Date().toISOString().split('T')[0]}`,
+                        importedById: user.id,
+                        importedAt: new Date()
+                    }
+                });
+            }
+
+            // Calculate new balance
+            const currentBalance = bankAccount.currentBalance;
+            let newBalance: any;
+            let dbTransactionType: string;
+
+            if (transactionData.transactionType === 'DEPOSIT') {
+                newBalance = currentBalance.plus(transactionData.amount);
+                dbTransactionType = 'DEBIT';
+            } else {
+                newBalance = currentBalance.minus(transactionData.amount);
+                dbTransactionType = 'CREDIT';
+            }
+
+            // Create bank transaction
+            const bankTransaction = await prisma.bankTransaction.create({
+                data: {
+                    bankStatementId: bankStatement.id,
+                    transactionDate: new Date(transactionData.transactionDate),
+                    amount: transactionData.amount,
+                    description: transactionData.description,
+                    referenceNumber: transactionData.referenceNumber,
+                    transactionType: dbTransactionType,
+                    runningBalance: newBalance
+                }
+            });
+
+            // Update bank account balance
+            await prisma.bankLedger.update({
+                where: { id: accountId },
+                data: {
+                    currentBalance: newBalance,
+                    updatedAt: new Date()
+                }
+            });
+
+            // Update bank statement closing balance
+            await prisma.bankStatement.update({
+                where: { id: bankStatement.id },
+                data: {
+                    closingBalance: newBalance
+                }
+            });
+
+            return bankTransaction;
+        });
+    }
+
+    async updateBankTransaction(
+        entityId: string,
+        accountId: string,
+        transactionId: string,
+        updateData: {
+            description?: string;
+            referenceNumber?: string;
+        },
+        userId: string
+    ) {
+        // Verify the bank account exists and belongs to the entity
+        const bankAccount = await this.prisma.bankLedger.findFirst({
+            where: {
+                id: accountId,
+                entityId: entityId,
+            },
+        });
+
+        if (!bankAccount) {
+            throw new NotFoundException('Bank account not found');
+        }
+
+        // Find the transaction
+        const transaction = await this.prisma.bankTransaction.findFirst({
+            where: {
+                id: transactionId,
+                bankStatement: {
+                    bankAccountId: accountId
+                }
+            }
+        });
+
+        if (!transaction) {
+            throw new NotFoundException('Transaction not found');
+        }
+
+        // Update only allowed fields (description, reference number)
+        const updatedTransaction = await this.prisma.bankTransaction.update({
+            where: { id: transactionId },
+            data: {
+                description: updateData.description || transaction.description,
+                referenceNumber: updateData.referenceNumber !== undefined
+                    ? updateData.referenceNumber
+                    : transaction.referenceNumber,
+            }
+        });
+
+        return updatedTransaction;
+    }
+
+    async deleteBankTransaction(
+        entityId: string,
+        accountId: string,
+        transactionId: string,
+        userId: string
+    ) {
+        // Verify the bank account exists and belongs to the entity
+        const bankAccount = await this.prisma.bankLedger.findFirst({
+            where: {
+                id: accountId,
+                entityId: entityId,
+            },
+        });
+
+        if (!bankAccount) {
+            throw new NotFoundException('Bank account not found');
+        }
+
+        // Find the transaction with statement info
+        const transaction = await this.prisma.bankTransaction.findFirst({
+            where: {
+                id: transactionId,
+                bankStatement: {
+                    bankAccountId: accountId
+                }
+            },
+            include: {
+                bankStatement: true
+            }
+        });
+
+        if (!transaction) {
+            throw new NotFoundException('Transaction not found');
+        }
+
+        return this.prisma.$transaction(async (prisma) => {
+            // Calculate balance adjustment
+            const amount = transaction.amount;
+            const isDebit = transaction.transactionType === 'DEBIT';
+
+            // Reverse the balance change
+            const balanceAdjustment = isDebit ? amount.negated() : amount;
+            const newBalance = bankAccount.currentBalance.plus(balanceAdjustment);
+
+            // Delete the transaction
+            await prisma.bankTransaction.delete({
+                where: { id: transactionId }
+            });
+
+            // Update bank account balance
+            await prisma.bankLedger.update({
+                where: { id: accountId },
+                data: {
+                    currentBalance: newBalance,
+                    updatedAt: new Date()
+                }
+            });
+
+            // Update bank statement closing balance
+            await prisma.bankStatement.update({
+                where: { id: transaction.bankStatement.id },
+                data: {
+                    closingBalance: newBalance
+                }
+            });
+
+            return { success: true, message: 'Transaction deleted successfully' };
+        });
+    }
+
+    async getTransactionDetails(
+        entityId: string,
+        accountId: string,
+        transactionId: string
+    ) {
+        // Verify the bank account exists and belongs to the entity
+        const bankAccount = await this.prisma.bankLedger.findFirst({
+            where: {
+                id: accountId,
+                entityId: entityId,
+            },
+        });
+
+        if (!bankAccount) {
+            throw new NotFoundException('Bank account not found');
+        }
+
+        // Get transaction with full details
+        const transaction = await this.prisma.bankTransaction.findFirst({
+            where: {
+                id: transactionId,
+                bankStatement: {
+                    bankAccountId: accountId
+                }
+            },
+            include: {
+                bankStatement: {
+                    select: {
+                        bankAccountId: true,
+                        statementReference: true,
+                        statementStartDate: true,
+                        statementEndDate: true
+                    }
+                }
+            }
+        });
+
+        if (!transaction) {
+            throw new NotFoundException('Transaction not found');
+        }
+
+        return {
+            id: transaction.id,
+            date: transaction.transactionDate.toISOString(),
+            amount: parseFloat(transaction.amount.toString()),
+            description: transaction.description,
+            referenceNumber: transaction.referenceNumber,
+            transactionType: transaction.transactionType,
+            runningBalance: transaction.runningBalance ? parseFloat(transaction.runningBalance.toString()) : null,
+            bankAccountId: accountId,
+            statementReference: transaction.bankStatement.statementReference,
+            createdAt: transaction.createdAt.toISOString(),
+        };
+    }
 }
