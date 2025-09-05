@@ -268,81 +268,97 @@ export class BankLedgerController {
         );
     }
 
-    // @Get(':accountId/transactions/:transactionId')
-    // @ApiOperation({ summary: 'Get specific bank transaction details' })
-    // @ApiResponse({
-    //     status: 200,
-    //     description: 'Transaction details retrieved successfully',
-    // })
-    // @ApiResponse({
-    //     status: 404,
-    //     description: 'Transaction not found',
-    // })
-    // @Roles('ENTITY_MANAGER', 'ORG_ADMIN', 'SUPER_ADMIN', 'ACCOUNTANT')
-    // async getBankTransaction(
-    //     @Param('entityId') entityId: string,
-    //     @Param('accountId') accountId: string,
-    //     @Param('transactionId') transactionId: string,
-    // ) {
-    //     return this.bankLedgerService.getBankTransaction(
-    //         entityId,
-    //         accountId,
-    //         transactionId
-    //     );
-    // }
+    @Get(':accountId/transactions/:transactionId')
+    @ApiOperation({ summary: 'Get specific bank transaction details' })
+    @ApiResponse({
+        status: 200,
+        description: 'Transaction details retrieved successfully',
+    })
+    @ApiResponse({
+        status: 404,
+        description: 'Transaction not found',
+    })
+    @Roles('ENTITY_MANAGER', 'ORG_ADMIN', 'SUPER_ADMIN', 'ACCOUNTANT')
+    async getBankTransaction(
+        @Param('entityId') entityId: string,
+        @Param('accountId') accountId: string,
+        @Param('transactionId') transactionId: string,
+    ) {
+        return this.bankLedgerService.getTransactionDetails(
+            entityId,
+            accountId,
+            transactionId
+        );
+    }
 
-    // @Patch(':accountId/transactions/:transactionId')
-    // @ApiOperation({ summary: 'Update a bank transaction' })
-    // @ApiResponse({
-    //     status: 200,
-    //     description: 'Transaction updated successfully',
-    // })
-    // @ApiResponse({
-    //     status: 404,
-    //     description: 'Transaction not found',
-    // })
-    // @Roles('ENTITY_MANAGER', 'ORG_ADMIN', 'SUPER_ADMIN')
-    // async updateBankTransaction(
-    //     @Param('entityId') entityId: string,
-    //     @Param('accountId') accountId: string,
-    //     @Param('transactionId') transactionId: string,
-    //     @Body() updateData: {
-    //         description?: string;
-    //         referenceNumber?: string;
-    //     },
-    //     @Request() req: any,
-    // ) {
-    //     return this.bankLedgerService.updateBankTransaction(
-    //         entityId,
-    //         accountId,
-    //         transactionId,
-    //         updateData,
-    //         req.user?.id || 'system'
-    //     );
-    // }
+    @Patch(':accountId/transactions/:transactionId')
+    @ApiOperation({ summary: 'Update a bank transaction' })
+    @ApiResponse({
+        status: 200,
+        description: 'Transaction updated successfully',
+    })
+    @ApiResponse({
+        status: 404,
+        description: 'Transaction not found',
+    })
+    @Roles('ENTITY_MANAGER', 'ORG_ADMIN', 'SUPER_ADMIN')
+    async updateBankTransaction(
+        @Param('entityId') entityId: string,
+        @Param('accountId') accountId: string,
+        @Param('transactionId') transactionId: string,
+        @Body() updateData: {
+            description?: string;
+            referenceNumber?: string;
+        },
+        @Request() req: any,
+    ) {
 
-    // @Delete(':accountId/transactions/:transactionId')
-    // @ApiOperation({ summary: 'Delete a bank transaction' })
-    // @ApiResponse({
-    //     status: 200,
-    //     description: 'Transaction deleted successfully',
-    // })
-    // @ApiResponse({
-    //     status: 404,
-    //     description: 'Transaction not found',
-    // })
-    // @Roles('ENTITY_MANAGER', 'ORG_ADMIN', 'SUPER_ADMIN')
-    // async deleteBankTransaction(
-    //     @Param('entityId') entityId: string,
-    //     @Param('accountId') accountId: string,
-    //     @Param('transactionId') transactionId: string,
-    //     @Request() req: any,
-    // ) {
-    //     return this.bankLedgerService.deleteBankTransaction(
-    //         entityId,
-    //         accountId,
-    //         transactionId,
-    //         req.user?.id || 'system'
-    //     );
-    // }
+        // Extract user ID from JWT token properly
+        const userId = req.user?.userId || req.user?.id || req.user?.sub;
+
+        if (!userId) {
+            throw new BadRequestException('User authentication required');
+        }
+
+        return this.bankLedgerService.updateBankTransaction(
+            entityId,
+            accountId,
+            transactionId,
+            updateData,
+            userId
+        );
+    }
+
+    @Delete(':accountId/transactions/:transactionId')
+    @ApiOperation({ summary: 'Delete a bank transaction' })
+    @ApiResponse({
+        status: 200,
+        description: 'Transaction deleted successfully',
+    })
+    @ApiResponse({
+        status: 404,
+        description: 'Transaction not found',
+    })
+    @Roles('ENTITY_MANAGER', 'ORG_ADMIN', 'SUPER_ADMIN')
+    async deleteBankTransaction(
+        @Param('entityId') entityId: string,
+        @Param('accountId') accountId: string,
+        @Param('transactionId') transactionId: string,
+        @Request() req: any,
+    ) {
+
+        // Extract user ID from JWT token properly
+        const userId = req.user?.userId || req.user?.id || req.user?.sub;
+
+        if (!userId) {
+            throw new BadRequestException('User authentication required');
+        }
+
+        return this.bankLedgerService.deleteBankTransaction(
+            entityId,
+            accountId,
+            transactionId,
+            userId
+        );
+    }
 }
